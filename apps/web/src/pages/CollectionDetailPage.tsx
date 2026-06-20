@@ -71,7 +71,7 @@ export function CollectionDetailPage() {
 
   return (
     <div>
-      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
         <ArrowLeft className="h-4 w-4" /> Voltar
       </button>
       <PageHeader
@@ -85,22 +85,22 @@ export function CollectionDetailPage() {
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="card p-4"><Stat label="Dias em atraso" value={<span className="text-rose-600">{c.daysOverdue}</span>} /></div>
+        <div className="card p-4"><Stat label="Dias em atraso" value={<span className="text-rose-600 dark:text-rose-400">{c.daysOverdue}</span>} /></div>
         <div className="card p-4"><Stat label="Valor em atraso" value={currency(c.totalOverdue)} /></div>
         <div className="card p-4"><Stat label="Status" value={<StatusBadge status={c.status} label={collectionStatusLabel[c.status]} />} /></div>
         <div className="card p-4"><Stat label="Aberto em" value={date(c.openedAt)} /></div>
       </div>
 
       {c.contract && (
-        <Link to={`/contracts/${c.contract.id}`} className="mb-6 block rounded-lg bg-brand-50 px-4 py-3 text-sm text-brand-700 ring-1 ring-brand-200">
+        <Link to={`/contracts/${c.contract.id}`} className="mb-6 block rounded-lg bg-brand-50 dark:bg-brand-500/10 px-4 py-3 text-sm text-brand-700 dark:text-brand-300 ring-1 ring-brand-200 dark:ring-brand-500/30">
           Abrir contrato {c.contract.number} para registrar pagamento ou renegociar.
         </Link>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="card p-6">
-          <h3 className="mb-4 font-semibold text-slate-800">Interações</h3>
-          <div className="mb-4 space-y-2 rounded-lg bg-slate-50 p-3">
+          <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Interações</h3>
+          <div className="mb-4 space-y-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3">
             <div className="flex gap-2">
               <select className="input w-auto" value={channel} onChange={(e) => setChannel(e.target.value)}>
                 {CHANNELS.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
@@ -113,21 +113,21 @@ export function CollectionDetailPage() {
           </div>
           <div className="space-y-3">
             {c.interactions && c.interactions.length > 0 ? c.interactions.map((it) => (
-              <div key={it.id} className="border-b border-slate-50 pb-2 last:border-0">
+              <div key={it.id} className="border-b border-slate-50 dark:border-slate-800 pb-2 last:border-0">
                 <div className="flex justify-between">
                   <StatusBadge status="IN_PROGRESS" label={it.channel} />
-                  <span className="text-xs text-slate-400">{dateTime(it.createdAt)}</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">{dateTime(it.createdAt)}</span>
                 </div>
-                <p className="mt-1 text-sm text-slate-600">{it.notes}</p>
-                {it.createdBy && <p className="text-xs text-slate-400">por {it.createdBy.name}</p>}
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{it.notes}</p>
+                {it.createdBy && <p className="text-xs text-slate-400 dark:text-slate-500">por {it.createdBy.name}</p>}
               </div>
-            )) : <p className="text-sm text-slate-400">Nenhuma interação.</p>}
+            )) : <p className="text-sm text-slate-400 dark:text-slate-500">Nenhuma interação.</p>}
           </div>
         </div>
 
         <div className="card p-6">
-          <h3 className="mb-4 font-semibold text-slate-800">Promessas de pagamento</h3>
-          <div className="mb-4 space-y-2 rounded-lg bg-slate-50 p-3">
+          <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Promessas de pagamento</h3>
+          <div className="mb-4 space-y-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3">
             <div className="flex gap-2">
               <input type="number" step="0.01" className="input" placeholder="Valor" value={promiseAmount || ''} onChange={(e) => setPromiseAmount(Number(e.target.value))} />
               <input type="date" className="input" value={promiseDate} onChange={(e) => setPromiseDate(e.target.value)} />
@@ -138,10 +138,10 @@ export function CollectionDetailPage() {
           </div>
           <div className="space-y-3">
             {c.promises && c.promises.length > 0 ? c.promises.map((pr) => (
-              <div key={pr.id} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0">
+              <div key={pr.id} className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-2 last:border-0">
                 <div>
-                  <p className="text-sm font-medium text-slate-700">{currency(pr.amount)}</p>
-                  <p className="text-xs text-slate-400">Para {date(pr.promisedDate)}</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{currency(pr.amount)}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">Para {date(pr.promisedDate)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={pr.status === 'KEPT' ? 'PAID' : pr.status === 'BROKEN' ? 'OVERDUE' : 'PENDING'} label={pr.status} />
@@ -155,7 +155,7 @@ export function CollectionDetailPage() {
                   )}
                 </div>
               </div>
-            )) : <p className="text-sm text-slate-400">Nenhuma promessa.</p>}
+            )) : <p className="text-sm text-slate-400 dark:text-slate-500">Nenhuma promessa.</p>}
           </div>
         </div>
       </div>

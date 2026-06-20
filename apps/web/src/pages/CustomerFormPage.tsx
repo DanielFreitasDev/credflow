@@ -129,14 +129,14 @@ export function CustomerFormPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
         <ArrowLeft className="h-4 w-4" /> Voltar
       </button>
       <PageHeader title={isEdit ? 'Editar cliente' : 'Novo cliente'} />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <section className="card space-y-4 p-6">
-          <h3 className="font-semibold text-slate-800">Identificação</h3>
+          <h3 className="font-semibold text-slate-800 dark:text-slate-100">Identificação</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Tipo">
               <select className="input" {...register('type')}>
@@ -170,7 +170,7 @@ export function CustomerFormPage() {
         </section>
 
         <section className="card space-y-4 p-6">
-          <h3 className="font-semibold text-slate-800">Contato e perfil financeiro</h3>
+          <h3 className="font-semibold text-slate-800 dark:text-slate-100">Contato e perfil financeiro</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="E-mail" error={errors.email?.message}>
               <input className="input" {...register('email')} />
@@ -191,7 +191,7 @@ export function CustomerFormPage() {
         </section>
 
         <section className="card space-y-4 p-6">
-          <h3 className="font-semibold text-slate-800">Endereço</h3>
+          <h3 className="font-semibold text-slate-800 dark:text-slate-100">Endereço</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
             <div className="sm:col-span-4"><Field label="Logradouro"><input className="input" {...register('street')} /></Field></div>
             <div className="sm:col-span-2"><Field label="Número"><input className="input" {...register('number')} /></Field></div>
@@ -225,7 +225,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
     <div>
       <label className="label">{label}</label>
       {children}
-      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
+      {error && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
     </div>
   );
 }

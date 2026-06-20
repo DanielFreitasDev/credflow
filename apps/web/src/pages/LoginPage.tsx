@@ -64,7 +64,7 @@ export function LoginPage() {
           </div>
 
           {error && (
-            <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">
+            <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/30">
               {error}
             </div>
           )}
@@ -74,7 +74,7 @@ export function LoginPage() {
             Entrar
           </button>
 
-          <p className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-500">
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
             Demo: <strong>admin@credflow.dev</strong> / <strong>Admin@123456</strong>
           </p>
         </form>

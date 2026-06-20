@@ -30,7 +30,7 @@ export function UsersPage() {
   };
 
   const columns: Column<User>[] = [
-    { key: 'name', header: 'Nome', render: (u) => <span className="font-semibold text-slate-800">{u.name}</span> },
+    { key: 'name', header: 'Nome', render: (u) => <span className="font-semibold text-slate-800 dark:text-slate-100">{u.name}</span> },
     { key: 'email', header: 'E-mail' },
     { key: 'role', header: 'Perfil', render: (u) => <Badge tone="indigo">{roleLabel[u.role]}</Badge> },
     { key: 'active', header: 'Situação', render: (u) => <Badge tone={u.active ? 'green' : 'gray'}>{u.active ? 'Ativo' : 'Inativo'}</Badge> },
@@ -40,7 +40,7 @@ export function UsersPage() {
       header: '',
       align: 'right',
       render: (u) => (
-        <button className="text-sm font-medium text-brand-600 hover:underline" onClick={() => toggleActive(u)}>
+        <button className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline" onClick={() => toggleActive(u)}>
           {u.active ? 'Desativar' : 'Ativar'}
         </button>
       ),

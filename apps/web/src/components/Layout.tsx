@@ -13,8 +13,11 @@ import {
   LogOut,
   Menu,
   X,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { useTheme } from '../lib/theme';
 import { roleLabel } from '../lib/format';
 import { Role } from '../lib/types';
 import { Badge } from './ui';
@@ -39,6 +42,7 @@ const NAV: NavItem[] = [
 
 export function Layout() {
   const { user, logout, hasRole } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -54,15 +58,15 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-30 w-64 transform border-r border-slate-200 bg-white transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-30 w-64 transform border-r border-slate-200 bg-white transition-transform dark:border-slate-800 dark:bg-slate-900 lg:static lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex h-16 items-center gap-2 border-b border-slate-100 px-6">
+        <div className="flex h-16 items-center gap-2 border-b border-slate-100 px-6 dark:border-slate-800">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white font-bold">
             C
           </div>
-          <span className="text-lg font-bold text-slate-900">CredFlow</span>
+          <span className="text-lg font-bold text-slate-900 dark:text-slate-50">CredFlow</span>
         </div>
         <nav className="flex flex-col gap-1 p-3">
           {items.map((item) => {
@@ -77,8 +81,8 @@ export function Layout() {
                   clsx(
                     'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition',
                     isActive
-                      ? 'bg-brand-50 text-brand-700'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                      ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100',
                   )
                 }
               >
@@ -91,24 +95,32 @@ export function Layout() {
       </aside>
 
       {open && (
-        <div className="fixed inset-0 z-20 bg-slate-900/30 lg:hidden" onClick={() => setOpen(false)} />
+        <div className="fixed inset-0 z-20 bg-slate-900/30 dark:bg-black/50 lg:hidden" onClick={() => setOpen(false)} />
       )}
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-4 backdrop-blur lg:px-8">
-          <button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setOpen((o) => !o)}>
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 lg:px-8">
+          <button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 lg:hidden" onClick={() => setOpen((o) => !o)}>
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
           <div className="flex flex-1 items-center justify-end gap-4">
             <div className="text-right">
-              <p className="text-sm font-semibold text-slate-800">{user?.name}</p>
-              <p className="text-xs text-slate-400">{user?.email}</p>
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{user?.name}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">{user?.email}</p>
             </div>
             <Badge tone="indigo">{user ? roleLabel[user.role] : ''}</Badge>
             <button
+              onClick={toggleTheme}
+              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+              aria-label={theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
+            >
+              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+            <button
               onClick={handleLogout}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
               title="Sair"
             >
               <LogOut className="h-5 w-5" />

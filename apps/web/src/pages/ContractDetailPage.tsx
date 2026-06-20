@@ -44,7 +44,7 @@ export function ContractDetailPage() {
 
   return (
     <div>
-      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
         <ArrowLeft className="h-4 w-4" /> Voltar
       </button>
       <PageHeader
@@ -63,7 +63,7 @@ export function ContractDetailPage() {
       />
 
       {c.collectionCase && (
-        <Link to={`/collections/${c.collectionCase.id}`} className="mb-4 flex items-center gap-2 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-rose-200">
+        <Link to={`/collections/${c.collectionCase.id}`} className="mb-4 flex items-center gap-2 rounded-lg bg-rose-50 dark:bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-500/30">
           <PhoneCall className="h-4 w-4" /> Caso de cobrança aberto — {c.collectionCase.daysOverdue} dias em atraso ({currency(c.collectionCase.totalOverdue)}).
         </Link>
       )}
@@ -75,7 +75,7 @@ export function ContractDetailPage() {
             <div className="card p-4"><Stat label="Total" value={currency(c.totalAmount)} /></div>
             <div className="card p-4"><Stat label="Pago" value={currency(c.summary.totalPaid)} /></div>
             <div className="card p-4"><Stat label="Em aberto" value={currency(c.summary.outstanding)} /></div>
-            <div className="card p-4"><Stat label="Em atraso" value={<span className={c.summary.overdue > 0 ? 'text-rose-600' : ''}>{currency(c.summary.overdue)}</span>} /></div>
+            <div className="card p-4"><Stat label="Em atraso" value={<span className={c.summary.overdue > 0 ? 'text-rose-600 dark:text-rose-400' : ''}>{currency(c.summary.overdue)}</span>} /></div>
             <div className="card p-4"><Stat label="Parcelas pagas" value={`${c.summary.paidCount}/${c.summary.installmentsCount}`} /></div>
           </>
         )}
@@ -83,10 +83,10 @@ export function ContractDetailPage() {
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="card p-6 lg:col-span-2">
-          <h3 className="mb-4 font-semibold text-slate-800">Cronograma de parcelas</h3>
+          <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Cronograma de parcelas</h3>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs uppercase text-slate-500 dark:text-slate-400">
                 <tr>
                   <th className="px-3 py-2 text-left">#</th>
                   <th className="px-3 py-2 text-left">Vencimento</th>
@@ -96,17 +96,17 @@ export function ContractDetailPage() {
                   <th className="px-3 py-2 text-right">Ação</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                 {c.installments?.map((i) => (
                   <tr key={i.id}>
                     <td className="px-3 py-2">{i.number}</td>
                     <td className="px-3 py-2">{date(i.dueDate)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{currency(i.amountDue)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{currency(i.amountPaid)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{currency(i.amountPaid)}</td>
                     <td className="px-3 py-2 text-center"><StatusBadge status={i.status} label={installmentStatusLabel[i.status]} /></td>
                     <td className="px-3 py-2 text-right">
                       {canPay && ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'].includes(i.status) && (
-                        <button className="text-sm font-medium text-brand-600 hover:underline" onClick={() => setPayInstallment(i)}>
+                        <button className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline" onClick={() => setPayInstallment(i)}>
                           Pagar
                         </button>
                       )}
@@ -120,7 +120,7 @@ export function ContractDetailPage() {
 
         <div className="space-y-6">
           <div className="card p-6">
-            <h3 className="mb-4 font-semibold text-slate-800">Condições</h3>
+            <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Condições</h3>
             <div className="space-y-3">
               <Stat label="Taxa mensal" value={percentFromFraction(c.interestRate)} />
               <Stat label="CET anual" value={percentFromFraction(c.cetAnnual)} />
@@ -131,20 +131,20 @@ export function ContractDetailPage() {
           </div>
 
           <div className="card p-6">
-            <h3 className="mb-4 font-semibold text-slate-800">Pagamentos</h3>
+            <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Pagamentos</h3>
             {c.payments && c.payments.length > 0 ? (
               <div className="space-y-3">
                 {c.payments.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between border-b border-slate-50 pb-2 text-sm last:border-0">
+                  <div key={p.id} className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-2 text-sm last:border-0">
                     <div>
-                      <p className="font-medium text-slate-700">{currency(p.amount)} <span className="text-xs text-slate-400">({p.method})</span></p>
-                      <p className="text-xs text-slate-400">Parc. {p.installment?.number} · {dateTime(p.paidAt)}</p>
+                      <p className="font-medium text-slate-700 dark:text-slate-200">{currency(p.amount)} <span className="text-xs text-slate-400 dark:text-slate-500">({p.method})</span></p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">Parc. {p.installment?.number} · {dateTime(p.paidAt)}</p>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-slate-400">Nenhum pagamento registrado.</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum pagamento registrado.</p>
             )}
           </div>
         </div>
@@ -192,17 +192,17 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
     <Modal open onClose={onClose} title={`Pagar parcela ${installment.number}`}>
       <div className="space-y-4">
         {charges && (
-          <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 text-sm">
-            <span className="text-slate-500">Em atraso</span>
+          <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3 text-sm">
+            <span className="text-slate-500 dark:text-slate-400">Em atraso</span>
             <span className="text-right font-medium">{charges.daysLate} dia(s)</span>
-            <span className="text-slate-500">Saldo da parcela</span>
+            <span className="text-slate-500 dark:text-slate-400">Saldo da parcela</span>
             <span className="text-right tabular-nums">{currency(charges.outstanding)}</span>
-            <span className="text-slate-500">Multa</span>
+            <span className="text-slate-500 dark:text-slate-400">Multa</span>
             <span className="text-right tabular-nums">{currency(charges.fine)}</span>
-            <span className="text-slate-500">Juros de mora</span>
+            <span className="text-slate-500 dark:text-slate-400">Juros de mora</span>
             <span className="text-right tabular-nums">{currency(charges.interest)}</span>
-            <span className="font-semibold text-slate-700">Total devido</span>
-            <span className="text-right font-bold tabular-nums text-brand-700">{currency(charges.totalDue)}</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-200">Total devido</span>
+            <span className="text-right font-bold tabular-nums text-brand-700 dark:text-brand-400">{currency(charges.totalDue)}</span>
           </div>
         )}
         <div className="grid grid-cols-2 gap-4">
@@ -221,7 +221,7 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
             </select>
           </div>
         </div>
-        <p className="text-xs text-slate-400">Pagamento parcial é permitido (valor menor que o total devido).</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">Pagamento parcial é permitido (valor menor que o total devido).</p>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onClose}>Cancelar</button>
           <button className="btn-primary" onClick={submit} disabled={loading}><Banknote className="h-4 w-4" />{loading && <Spinner className="h-4 w-4" />}Registrar pagamento</button>
@@ -261,7 +261,7 @@ function RenegotiateModal({ open, contract, onClose, onDone }: { open: boolean; 
   return (
     <Modal open={open} onClose={onClose} title="Renegociar dívida">
       <div className="space-y-4">
-        <p className="text-sm text-slate-500">O saldo devedor em aberto (incluindo encargos de mora) será consolidado em um novo contrato.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">O saldo devedor em aberto (incluindo encargos de mora) será consolidado em um novo contrato.</p>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="label">Novo prazo (meses)</label>

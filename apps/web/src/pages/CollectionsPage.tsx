@@ -39,9 +39,9 @@ export function CollectionsPage() {
   };
 
   const columns: Column<CollectionCase>[] = [
-    { key: 'contract', header: 'Contrato', render: (c) => <span className="font-semibold text-slate-800">{c.contract?.number}</span> },
+    { key: 'contract', header: 'Contrato', render: (c) => <span className="font-semibold text-slate-800 dark:text-slate-100">{c.contract?.number}</span> },
     { key: 'customer', header: 'Cliente', render: (c) => c.contract?.customer?.name ?? '—' },
-    { key: 'daysOverdue', header: 'Atraso', align: 'right', render: (c) => <span className="font-medium text-rose-600">{c.daysOverdue} dias</span> },
+    { key: 'daysOverdue', header: 'Atraso', align: 'right', render: (c) => <span className="font-medium text-rose-600 dark:text-rose-400">{c.daysOverdue} dias</span> },
     { key: 'totalOverdue', header: 'Valor em atraso', align: 'right', render: (c) => currency(c.totalOverdue) },
     { key: 'status', header: 'Status', render: (c) => <StatusBadge status={c.status} label={collectionStatusLabel[c.status]} /> },
   ];
@@ -61,7 +61,7 @@ export function CollectionsPage() {
       />
 
       <div className="card">
-        <div className="flex items-center gap-3 border-b border-slate-100 p-4">
+        <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 p-4">
           <select className="input w-auto" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
             <option value="">Todos os status</option>
             {Object.entries(collectionStatusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

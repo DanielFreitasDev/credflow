@@ -80,7 +80,7 @@ export function ProposalNewPage() {
 
   return (
     <div>
-      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
         <ArrowLeft className="h-4 w-4" /> Voltar
       </button>
       <PageHeader title="Nova proposta" subtitle="Simule e registre uma solicitação de crédito" />
@@ -88,24 +88,24 @@ export function ProposalNewPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Inputs */}
         <div className="card space-y-4 p-6">
-          <h3 className="font-semibold text-slate-800">Parâmetros</h3>
+          <h3 className="font-semibold text-slate-800 dark:text-slate-100">Parâmetros</h3>
 
           <div className="relative">
             <label className="label">Cliente</label>
             {selected && customerId ? (
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
                 <div>
-                  <p className="font-medium text-slate-800">{selected.name}</p>
-                  <p className="text-xs text-slate-400">{formatDocument(selected.document)}</p>
+                  <p className="font-medium text-slate-800 dark:text-slate-100">{selected.name}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">{formatDocument(selected.document)}</p>
                 </div>
-                <button className="text-sm text-brand-600 hover:underline" onClick={() => { setCustomerId(''); setShowList(true); }}>
+                <button className="text-sm text-brand-600 dark:text-brand-400 hover:underline" onClick={() => { setCustomerId(''); setShowList(true); }}>
                   Trocar
                 </button>
               </div>
             ) : (
               <>
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                   <input
                     className="input pl-9"
                     placeholder="Buscar cliente por nome/documento..."
@@ -115,15 +115,15 @@ export function ProposalNewPage() {
                   />
                 </div>
                 {showList && results && results.data.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                  <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg">
                     {results.data.map((c) => (
                       <button
                         key={c.id}
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-brand-50"
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm dark:hover:bg-brand-500/10 hover:bg-brand-50"
                         onClick={() => { setCustomerId(c.id); setShowList(false); setCustomerSearch(''); }}
                       >
-                        <span className="font-medium text-slate-800">{c.name}</span>
-                        <span className="text-xs text-slate-400">{formatDocument(c.document)}</span>
+                        <span className="font-medium text-slate-800 dark:text-slate-100">{c.name}</span>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">{formatDocument(c.document)}</span>
                       </button>
                     ))}
                   </div>
@@ -160,8 +160,8 @@ export function ProposalNewPage() {
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={autoIof} onChange={(e) => setAutoIof(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input type="checkbox" checked={autoIof} onChange={(e) => setAutoIof(e.target.checked)} className="h-4 w-4 rounded border-slate-300 dark:border-slate-700" />
             Calcular IOF automaticamente
           </label>
 
@@ -179,8 +179,8 @@ export function ProposalNewPage() {
         {/* Simulation result */}
         <div className="card p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-800">Simulação</h3>
-            {isFetching && <Spinner className="h-4 w-4 text-slate-400" />}
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">Simulação</h3>
+            {isFetching && <Spinner className="h-4 w-4 text-slate-400 dark:text-slate-500" />}
           </div>
 
           {simError ? (
@@ -196,10 +196,10 @@ export function ProposalNewPage() {
                 <Result label="CET anual" value={percentFromFraction(sim.cetAnnual)} highlight />
               </div>
 
-              <h4 className="mb-2 mt-6 text-sm font-semibold text-slate-700">Cronograma</h4>
-              <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-100">
+              <h4 className="mb-2 mt-6 text-sm font-semibold text-slate-700 dark:text-slate-200">Cronograma</h4>
+              <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-100 dark:border-slate-800">
                 <table className="min-w-full text-xs">
-                  <thead className="sticky top-0 bg-slate-50 text-slate-500">
+                  <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
                     <tr>
                       <th className="px-3 py-2 text-left">#</th>
                       <th className="px-3 py-2 text-right">Amortização</th>
@@ -208,14 +208,14 @@ export function ProposalNewPage() {
                       <th className="px-3 py-2 text-right">Saldo</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                     {sim.schedule.map((s) => (
                       <tr key={s.number}>
                         <td className="px-3 py-1.5">{s.number}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">{currency(s.principal)}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">{currency(s.interest)}</td>
                         <td className="px-3 py-1.5 text-right font-medium tabular-nums">{currency(s.amount)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-slate-400">{currency(s.balance)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-slate-400 dark:text-slate-500">{currency(s.balance)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -223,7 +223,7 @@ export function ProposalNewPage() {
               </div>
             </>
           ) : (
-            <p className="py-12 text-center text-sm text-slate-400">Informe os parâmetros para simular.</p>
+            <p className="py-12 text-center text-sm text-slate-400 dark:text-slate-500">Informe os parâmetros para simular.</p>
           )}
         </div>
       </div>
@@ -233,9 +233,9 @@ export function ProposalNewPage() {
 
 function Result({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className={`rounded-lg p-3 ${highlight ? 'bg-brand-50' : 'bg-slate-50'}`}>
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className={`mt-0.5 text-lg font-bold ${highlight ? 'text-brand-700' : 'text-slate-800'}`}>{value}</p>
+    <div className={`rounded-lg p-3 ${highlight ? 'bg-brand-50 dark:bg-brand-500/10' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+      <p className={`mt-0.5 text-lg font-bold ${highlight ? 'text-brand-700 dark:text-brand-400' : 'text-slate-800 dark:text-slate-100'}`}>{value}</p>
     </div>
   );
 }

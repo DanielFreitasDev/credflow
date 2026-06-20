@@ -20,9 +20,9 @@ export function DataTable<T extends { id: string }>({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-100 text-sm">
+      <table className="min-w-full divide-y divide-slate-100 text-sm dark:divide-slate-800">
         <thead>
-          <tr className="bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <tr className="bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
             {columns.map((c) => (
               <th
                 key={c.key}
@@ -37,18 +37,18 @@ export function DataTable<T extends { id: string }>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-50">
+        <tbody className="divide-y divide-slate-50 dark:divide-slate-800/70">
           {data.map((row) => (
             <tr
               key={row.id}
               onClick={() => onRowClick?.(row)}
-              className={clsx('transition', onRowClick && 'cursor-pointer hover:bg-brand-50/40')}
+              className={clsx('transition', onRowClick && 'cursor-pointer hover:bg-brand-50/40 dark:hover:bg-brand-500/10')}
             >
               {columns.map((c) => (
                 <td
                   key={c.key}
                   className={clsx(
-                    'px-4 py-3 text-slate-700',
+                    'px-4 py-3 text-slate-700 dark:text-slate-300',
                     c.align === 'right' && 'text-right tabular-nums',
                     c.align === 'center' && 'text-center',
                     c.className,

@@ -49,7 +49,7 @@ export function ProposalDetailPage() {
 
   return (
     <div>
-      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
         <ArrowLeft className="h-4 w-4" /> Voltar
       </button>
       <PageHeader
@@ -88,7 +88,7 @@ export function ProposalDetailPage() {
       />
 
       {p.contract && (
-        <Link to={`/contracts/${p.contract.id}`} className="mb-4 block rounded-lg bg-brand-50 px-4 py-3 text-sm text-brand-700 ring-1 ring-brand-200">
+        <Link to={`/contracts/${p.contract.id}`} className="mb-4 block rounded-lg bg-brand-50 dark:bg-brand-500/10 px-4 py-3 text-sm text-brand-700 dark:text-brand-300 ring-1 ring-brand-200 dark:ring-brand-500/30">
           Contrato gerado: <strong>{p.contract.number}</strong> — clique para abrir.
         </Link>
       )}
@@ -96,7 +96,7 @@ export function ProposalDetailPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <div className="card p-6">
-            <h3 className="mb-4 font-semibold text-slate-800">Condições</h3>
+            <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Condições</h3>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <Stat label="Valor solicitado" value={currency(p.requestedAmount)} />
               <Stat label="Valor financiado" value={currency(p.financedAmount)} />
@@ -112,10 +112,10 @@ export function ProposalDetailPage() {
 
           {p.schedule && (
             <div className="card p-6">
-              <h3 className="mb-4 font-semibold text-slate-800">Cronograma simulado</h3>
-              <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-100">
+              <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Cronograma simulado</h3>
+              <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-100 dark:border-slate-800">
                 <table className="min-w-full text-xs">
-                  <thead className="sticky top-0 bg-slate-50 text-slate-500">
+                  <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
                     <tr>
                       <th className="px-3 py-2 text-left">#</th>
                       <th className="px-3 py-2 text-right">Amortização</th>
@@ -124,14 +124,14 @@ export function ProposalDetailPage() {
                       <th className="px-3 py-2 text-right">Saldo</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                     {p.schedule.map((s) => (
                       <tr key={s.number}>
                         <td className="px-3 py-1.5">{s.number}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">{currency(s.principal)}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">{currency(s.interest)}</td>
                         <td className="px-3 py-1.5 text-right font-medium tabular-nums">{currency(s.amount)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-slate-400">{currency(s.balance)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-slate-400 dark:text-slate-500">{currency(s.balance)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -143,7 +143,7 @@ export function ProposalDetailPage() {
 
         <div className="space-y-6">
           <div className="card p-6">
-            <h3 className="mb-4 font-semibold text-slate-800">Análise de crédito</h3>
+            <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Análise de crédito</h3>
             {p.analysis ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -155,8 +155,8 @@ export function ProposalDetailPage() {
                 {p.analysis.approvedAmount != null && <Stat label="Valor aprovado" value={currency(p.analysis.approvedAmount)} />}
                 <Stat label="Tipo" value={p.analysis.automatic ? 'Automática' : 'Manual'} hint={`Política ${p.analysis.policyVersion}`} />
                 <div>
-                  <p className="mb-1 text-xs font-medium uppercase text-slate-400">Motivos</p>
-                  <ul className="list-inside list-disc space-y-1 text-xs text-slate-600">
+                  <p className="mb-1 text-xs font-medium uppercase text-slate-400 dark:text-slate-500">Motivos</p>
+                  <ul className="list-inside list-disc space-y-1 text-xs text-slate-600 dark:text-slate-300">
                     {p.analysis.reasons.map((r, i) => (
                       <li key={i}>{r}</li>
                     ))}
@@ -164,24 +164,24 @@ export function ProposalDetailPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-400">Sem análise registrada.</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">Sem análise registrada.</p>
             )}
           </div>
 
           <div className="card p-6">
-            <h3 className="mb-4 font-semibold text-slate-800">Histórico</h3>
-            <ol className="relative space-y-4 border-l border-slate-200 pl-4">
+            <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Histórico</h3>
+            <ol className="relative space-y-4 border-l border-slate-200 dark:border-slate-800 pl-4">
               {p.events?.map((ev) => (
                 <li key={ev.id}>
                   <span className="absolute -left-1.5 mt-1 h-3 w-3 rounded-full bg-brand-500" />
-                  <p className="text-sm font-medium text-slate-700">
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
                     {ev.fromStatus ? `${proposalStatusLabel[ev.fromStatus]} → ` : ''}
                     {proposalStatusLabel[ev.toStatus]}
                   </p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
                     {dateTime(ev.createdAt)} {ev.changedBy ? `· ${ev.changedBy.name}` : ''}
                   </p>
-                  {ev.reason && <p className="text-xs text-slate-500">{ev.reason}</p>}
+                  {ev.reason && <p className="text-xs text-slate-500 dark:text-slate-400">{ev.reason}</p>}
                 </li>
               ))}
             </ol>
@@ -297,7 +297,7 @@ function ContractModal({ open, onClose, proposalId, onDone }: { open: boolean; o
             <input type="number" step="0.5" className="input" value={lateInterest} onChange={(e) => setLateInterest(Number(e.target.value))} />
           </div>
         </div>
-        <p className="text-xs text-slate-400">Datas em branco usam hoje e o vencimento padrão (início + 1 mês).</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">Datas em branco usam hoje e o vencimento padrão (início + 1 mês).</p>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onClose}>Cancelar</button>
           <button className="btn-primary" onClick={submit} disabled={loading}>{loading && <Spinner className="h-4 w-4" />}Gerar contrato</button>

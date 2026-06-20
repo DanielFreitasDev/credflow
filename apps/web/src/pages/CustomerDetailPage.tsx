@@ -32,7 +32,7 @@ export function CustomerDetailPage() {
 
   return (
     <div>
-      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
         <ArrowLeft className="h-4 w-4" /> Voltar
       </button>
       <PageHeader
@@ -50,7 +50,7 @@ export function CustomerDetailPage() {
         <div className="space-y-6 lg:col-span-2">
           <div className="card p-6">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-800">Dados cadastrais</h3>
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">Dados cadastrais</h3>
               <StatusBadge status={customer.status} label={customerStatusLabel[customer.status]} />
             </div>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -62,7 +62,7 @@ export function CustomerDetailPage() {
               <Stat label={customer.type === 'COMPANY' ? 'Fundação' : 'Nascimento'} value={date(customer.foundationDate || customer.birthDate)} />
             </div>
             {customer.address && (
-              <div className="mt-4 border-t border-slate-100 pt-4">
+              <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
                 <Stat
                   label="Endereço"
                   value={`${customer.address.street}, ${customer.address.number ?? 's/n'} — ${customer.address.district ?? ''} ${customer.address.city}/${customer.address.state} · ${customer.address.zipCode}`}
@@ -72,60 +72,60 @@ export function CustomerDetailPage() {
           </div>
 
           <div className="card p-6">
-            <h3 className="mb-4 font-semibold text-slate-800">Propostas recentes</h3>
+            <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Propostas recentes</h3>
             {customer.proposals && customer.proposals.length > 0 ? (
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-slate-50 dark:divide-slate-800">
                 {customer.proposals.map((p) => (
-                  <Link key={p.id} to={`/proposals/${p.id}`} className="flex items-center justify-between py-3 hover:bg-slate-50">
+                  <Link key={p.id} to={`/proposals/${p.id}`} className="flex items-center justify-between py-3 hover:bg-slate-50 dark:hover:bg-slate-800">
                     <div>
-                      <p className="font-medium text-slate-800">{p.number}</p>
-                      <p className="text-xs text-slate-400">{currency(p.requestedAmount)} · {p.termMonths}x</p>
+                      <p className="font-medium text-slate-800 dark:text-slate-100">{p.number}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">{currency(p.requestedAmount)} · {p.termMonths}x</p>
                     </div>
                     <StatusBadge status={p.status} label={proposalStatusLabel[p.status]} />
                   </Link>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-slate-400">Nenhuma proposta.</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">Nenhuma proposta.</p>
             )}
           </div>
 
           <div className="card p-6">
-            <h3 className="mb-4 font-semibold text-slate-800">Contratos</h3>
+            <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Contratos</h3>
             {customer.contracts && customer.contracts.length > 0 ? (
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-slate-50 dark:divide-slate-800">
                 {customer.contracts.map((c) => (
-                  <Link key={c.id} to={`/contracts/${c.id}`} className="flex items-center justify-between py-3 hover:bg-slate-50">
+                  <Link key={c.id} to={`/contracts/${c.id}`} className="flex items-center justify-between py-3 hover:bg-slate-50 dark:hover:bg-slate-800">
                     <div>
-                      <p className="font-medium text-slate-800">{c.number}</p>
-                      <p className="text-xs text-slate-400">{currency(c.principal)} · {c.termMonths}x</p>
+                      <p className="font-medium text-slate-800 dark:text-slate-100">{c.number}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">{currency(c.principal)} · {c.termMonths}x</p>
                     </div>
                     <StatusBadge status={c.status} label={contractStatusLabel[c.status]} />
                   </Link>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-slate-400">Nenhum contrato.</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum contrato.</p>
             )}
           </div>
         </div>
 
         <div className="space-y-6">
           <div className="card p-6">
-            <h3 className="mb-4 font-semibold text-slate-800">Histórico financeiro</h3>
+            <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Histórico financeiro</h3>
             {history ? (
               <div className="space-y-4">
                 <Stat label="Total emprestado" value={currency(history.totalBorrowed)} />
                 <Stat label="Total pago" value={currency(history.totalPaid)} />
                 <Stat label="Saldo em aberto" value={currency(history.outstanding)} />
-                <Stat label="Em atraso" value={<span className={history.overdue > 0 ? 'text-rose-600' : ''}>{currency(history.overdue)}</span>} />
-                <div className="flex gap-4 border-t border-slate-100 pt-4 text-sm">
-                  <span className="text-slate-500">Contratos: <strong className="text-slate-800">{history.totalContracts}</strong></span>
-                  <span className="text-slate-500">Ativos: <strong className="text-slate-800">{history.activeContracts}</strong></span>
+                <Stat label="Em atraso" value={<span className={history.overdue > 0 ? 'text-rose-600 dark:text-rose-400' : ''}>{currency(history.overdue)}</span>} />
+                <div className="flex gap-4 border-t border-slate-100 dark:border-slate-800 pt-4 text-sm">
+                  <span className="text-slate-500 dark:text-slate-400">Contratos: <strong className="text-slate-800 dark:text-slate-100">{history.totalContracts}</strong></span>
+                  <span className="text-slate-500 dark:text-slate-400">Ativos: <strong className="text-slate-800 dark:text-slate-100">{history.activeContracts}</strong></span>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-400">Carregando...</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">Carregando...</p>
             )}
           </div>
         </div>
