@@ -1,0 +1,491 @@
+// CredFlow — Prisma schema
+// Money is stored as Decimal(14,2); rates as Decimal(9,6) (fraction, e.g. 0.025000 = 2.5%/month).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Enums ─────────────────────────
+enum Role {
+  ADMIN
+  MANAGER
+  ANALYST
+  OPERATOR
+  AUDITOR
+}
+
+enum CustomerType {
+  INDIVIDUAL // Pessoa Física
+  COMPANY // Pessoa Jurídica
+}
+
+enum CustomerStatus {
+  PROSPECT
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum ContactType {
+  PHONE
+  MOBILE
+  EMAIL
+  WHATSAPP
+}
+
+enum DocumentType {
+  RG
+  CPF
+  CNH
+  CNPJ
+  PROOF_OF_INCOME
+  PROOF_OF_ADDRESS
+  ARTICLES_OF_INCORPORATION
+  OTHER
+}
+
+enum AmortizationType {
+  PRICE // Parcelas fixas (Tabela Price)
+  SAC // Amortização constante
+  SIMPLE // Juros simples
+}
+
+enum ProposalStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+  CONTRACTED
+}
+
+enum AnalysisDecision {
+  APPROVED
+  REJECTED
+  MANUAL_REVIEW
+}
+
+enum RiskBand {
+  A
+  B
+  C
+  D
+  E
+}
+
+enum ContractStatus {
+  ACTIVE
+  SETTLED
+  DEFAULTED
+  CANCELLED
+  RENEGOTIATED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  RENEGOTIATED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  PIX
+  BOLETO
+  TED
+  CASH
+  CARD
+  INTERNAL
+}
+
+enum CollectionStatus {
+  OPEN
+  IN_PROGRESS
+  PROMISE
+  NEGOTIATING
+  RESOLVED
+  WRITTEN_OFF
+}
+
+enum InteractionChannel {
+  PHONE
+  EMAIL
+  SMS
+  WHATSAPP
+  LETTER
+  VISIT
+  SYSTEM
+}
+
+enum PromiseStatus {
+  PENDING
+  KEPT
+  BROKEN
+  CANCELLED
+}
+
+// ───────────────────────── Identity ─────────────────────────
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(OPERATOR)
+  active       Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens         RefreshToken[]
+  createdCustomers      Customer[]              @relation("CustomerCreatedBy")
+  createdProposals      CreditProposal[]        @relation("ProposalCreatedBy")
+  analyses              CreditAnalysis[]        @relation("AnalysisAnalyst")
+  signedContracts       Contract[]              @relation("ContractSignedBy")
+  registeredPayments    Payment[]               @relation("PaymentRegisteredBy")
+  proposalEvents        ProposalEvent[]         @relation("ProposalEventBy")
+  collectionInteractions CollectionInteraction[] @relation("InteractionBy")
+  paymentPromises       PaymentPromise[]        @relation("PromiseBy")
+  auditLogs             AuditLog[]
+
+  @@index([role])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ───────────────────────── Customers ─────────────────────────
+model Customer {
+  id            String         @id @default(cuid())
+  type          CustomerType
+  status        CustomerStatus @default(PROSPECT)
+  // PF: nome completo | PJ: razão social
+  name          String
+  tradeName     String? // PJ: nome fantasia
+  // CPF (PF) ou CNPJ (PJ), apenas dígitos
+  document      String         @unique
+  email         String?
+  phone         String?
+  birthDate     DateTime? // PF
+  foundationDate DateTime? // PJ
+  // Dados profissionais / financeiros
+  occupation    String? // PF: profissão | PJ: ramo de atividade
+  employerName  String?
+  employmentType String?
+  monthlyIncome Decimal        @default(0) @db.Decimal(14, 2) // renda (PF) ou faturamento (PJ)
+  // Score interno (0-1000) e observações
+  internalScore Int            @default(500)
+  notes         String?
+
+  createdById String?
+  createdBy   User?   @relation("CustomerCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  address   Address?
+  contacts  CustomerContact[]
+  documents CustomerDocument[]
+  proposals CreditProposal[]
+  contracts Contract[]
+
+  @@index([status])
+  @@index([type])
+  @@index([name])
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  customerId String  @unique
+  street     String
+  number     String?
+  complement String?
+  district   String?
+  city       String
+  state      String // UF
+  zipCode    String
+  country    String  @default("BR")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model CustomerContact {
+  id         String      @id @default(cuid())
+  customerId String
+  type       ContactType
+  value      String
+  label      String?
+  isPrimary  Boolean     @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+model CustomerDocument {
+  id         String       @id @default(cuid())
+  customerId String
+  type       DocumentType
+  number     String?
+  issuer     String?
+  issueDate  DateTime?
+  fileUrl    String?
+  notes      String?
+  createdAt  DateTime     @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+// ───────────────────────── Credit Proposals ─────────────────────────
+model CreditProposal {
+  id              String           @id @default(cuid())
+  number          String           @unique
+  customerId      String
+  status          ProposalStatus   @default(DRAFT)
+  amortizationType AmortizationType @default(PRICE)
+  // Entradas da simulação
+  requestedAmount Decimal          @db.Decimal(14, 2)
+  termMonths      Int
+  interestRate    Decimal          @db.Decimal(9, 6) // taxa mensal (fração)
+  purpose         String?
+  // Encargos
+  iofAmount       Decimal          @default(0) @db.Decimal(14, 2)
+  tacAmount       Decimal          @default(0) @db.Decimal(14, 2) // Taxa de Abertura de Crédito
+  // Resultados computados
+  financedAmount  Decimal          @db.Decimal(14, 2) // valor financiado (requested + tac + iof)
+  installmentAmount Decimal        @db.Decimal(14, 2) // primeira parcela (referência)
+  totalAmount     Decimal          @db.Decimal(14, 2) // soma das parcelas
+  totalInterest   Decimal          @db.Decimal(14, 2)
+  cetMonthly      Decimal          @db.Decimal(9, 6) // CET mensal (fração)
+  cetAnnual       Decimal          @db.Decimal(9, 6) // CET anual (fração)
+
+  createdById String?
+  createdBy   User?   @relation("ProposalCreatedBy", fields: [createdById], references: [id])
+
+  decidedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  customer Customer        @relation(fields: [customerId], references: [id])
+  analysis CreditAnalysis?
+  contract Contract?
+  events   ProposalEvent[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+model ProposalEvent {
+  id         String          @id @default(cuid())
+  proposalId String
+  fromStatus ProposalStatus?
+  toStatus   ProposalStatus
+  reason     String?
+  changedById String?
+  changedBy  User?           @relation("ProposalEventBy", fields: [changedById], references: [id])
+  createdAt  DateTime        @default(now())
+
+  proposal CreditProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+}
+
+// ───────────────────────── Credit Analysis ─────────────────────────
+model CreditAnalysis {
+  id            String           @id @default(cuid())
+  proposalId    String           @unique
+  decision      AnalysisDecision
+  score         Int // score apurado pela política (0-1000)
+  riskBand      RiskBand
+  suggestedLimit Decimal         @db.Decimal(14, 2)
+  approvedAmount Decimal?        @db.Decimal(14, 2)
+  reasons       String[] // motivos / observações da decisão
+  policyVersion String
+  automatic     Boolean          @default(true)
+  analystId     String?
+  analyst       User?            @relation("AnalysisAnalyst", fields: [analystId], references: [id])
+  createdAt     DateTime         @default(now())
+
+  proposal CreditProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+}
+
+// ───────────────────────── Contracts ─────────────────────────
+model Contract {
+  id               String           @id @default(cuid())
+  number           String           @unique
+  proposalId       String?          @unique
+  customerId       String
+  status           ContractStatus   @default(ACTIVE)
+  amortizationType AmortizationType
+  principal        Decimal          @db.Decimal(14, 2) // valor financiado
+  interestRate     Decimal          @db.Decimal(9, 6) // taxa mensal
+  termMonths       Int
+  totalAmount      Decimal          @db.Decimal(14, 2)
+  totalInterest    Decimal          @db.Decimal(14, 2)
+  iofAmount        Decimal          @default(0) @db.Decimal(14, 2)
+  tacAmount        Decimal          @default(0) @db.Decimal(14, 2)
+  cetAnnual        Decimal          @db.Decimal(9, 6)
+  // Encargos de mora configuráveis
+  lateFeeRate      Decimal          @default(0.02) @db.Decimal(9, 6) // multa única sobre a parcela (2%)
+  lateInterestRate Decimal          @default(0.01) @db.Decimal(9, 6) // juros de mora ao mês (1%)
+  startDate        DateTime
+  firstDueDate     DateTime
+  endDate          DateTime
+  settledAt        DateTime?
+
+  signedById String?
+  signedBy   User?   @relation("ContractSignedBy", fields: [signedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  proposal       CreditProposal? @relation(fields: [proposalId], references: [id])
+  customer       Customer        @relation(fields: [customerId], references: [id])
+  installments   Installment[]
+  payments       Payment[]
+  collectionCase CollectionCase?
+
+  // Renegociação
+  renegotiatedFromId String?       @unique
+  renegotiatedFrom   Contract?     @relation("Renegotiation", fields: [renegotiatedFromId], references: [id])
+  renegotiatedTo     Contract?     @relation("Renegotiation")
+
+  @@index([status])
+  @@index([customerId])
+}
+
+model Installment {
+  id           String            @id @default(cuid())
+  contractId   String
+  number       Int
+  dueDate      DateTime
+  principalDue Decimal           @db.Decimal(14, 2)
+  interestDue  Decimal           @db.Decimal(14, 2)
+  amountDue    Decimal           @db.Decimal(14, 2) // principal + juros (valor original)
+  amountPaid   Decimal           @default(0) @db.Decimal(14, 2)
+  lateFee      Decimal           @default(0) @db.Decimal(14, 2)
+  lateInterest Decimal           @default(0) @db.Decimal(14, 2)
+  status       InstallmentStatus @default(PENDING)
+  paidAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contract Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@unique([contractId, number])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  contractId    String
+  installmentId String
+  amount        Decimal       @db.Decimal(14, 2)
+  method        PaymentMethod @default(PIX)
+  paidAt        DateTime
+  // Distribuição do valor pago
+  principalPortion    Decimal @default(0) @db.Decimal(14, 2)
+  interestPortion     Decimal @default(0) @db.Decimal(14, 2)
+  lateFeePortion      Decimal @default(0) @db.Decimal(14, 2)
+  lateInterestPortion Decimal @default(0) @db.Decimal(14, 2)
+  notes         String?
+
+  registeredById String?
+  registeredBy   User?   @relation("PaymentRegisteredBy", fields: [registeredById], references: [id])
+  createdAt      DateTime @default(now())
+
+  contract    Contract    @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  installment Installment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([installmentId])
+  @@index([paidAt])
+}
+
+// ───────────────────────── Collections ─────────────────────────
+model CollectionCase {
+  id          String           @id @default(cuid())
+  contractId  String           @unique
+  status      CollectionStatus @default(OPEN)
+  daysOverdue Int              @default(0)
+  totalOverdue Decimal         @default(0) @db.Decimal(14, 2)
+  openedAt    DateTime         @default(now())
+  resolvedAt  DateTime?
+  updatedAt   DateTime         @updatedAt
+
+  contract     Contract                @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  interactions CollectionInteraction[]
+  promises     PaymentPromise[]
+
+  @@index([status])
+}
+
+model CollectionInteraction {
+  id        String             @id @default(cuid())
+  caseId    String
+  channel   InteractionChannel
+  notes     String
+  createdById String?
+  createdBy User?              @relation("InteractionBy", fields: [createdById], references: [id])
+  createdAt DateTime           @default(now())
+
+  case CollectionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+}
+
+model PaymentPromise {
+  id          String        @id @default(cuid())
+  caseId      String
+  amount      Decimal       @db.Decimal(14, 2)
+  promisedDate DateTime
+  status      PromiseStatus @default(PENDING)
+  notes       String?
+  createdById String?
+  createdBy   User?         @relation("PromiseBy", fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now())
+
+  case CollectionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+}
+
+// ───────────────────────── Audit ─────────────────────────
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String // CREATE | UPDATE | DELETE | LOGIN | STATUS_CHANGE | ...
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}

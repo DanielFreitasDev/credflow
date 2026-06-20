@@ -1,0 +1,231 @@
+import { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
+import { api, apiError } from '../lib/api';
+import { Customer } from '../lib/types';
+import { useToast } from '../lib/toast';
+import { LoadingState, PageHeader, Spinner } from '../components/ui';
+
+const schema = z.object({
+  type: z.enum(['INDIVIDUAL', 'COMPANY']),
+  name: z.string().min(2, 'Informe o nome'),
+  tradeName: z.string().optional(),
+  document: z.string().min(11, 'Documento inválido'),
+  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
+  phone: z.string().optional(),
+  birthDate: z.string().optional(),
+  foundationDate: z.string().optional(),
+  occupation: z.string().optional(),
+  monthlyIncome: z.coerce.number().min(0),
+  internalScore: z.coerce.number().min(0).max(1000),
+  status: z.enum(['PROSPECT', 'ACTIVE', 'INACTIVE', 'BLOCKED']),
+  notes: z.string().optional(),
+  street: z.string().optional(),
+  number: z.string().optional(),
+  district: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
+
+export function CustomerFormPage() {
+  const { id } = useParams();
+  const isEdit = !!id;
+  const navigate = useNavigate();
+  const toast = useToast();
+  const qc = useQueryClient();
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { type: 'INDIVIDUAL', status: 'PROSPECT', monthlyIncome: 0, internalScore: 500 },
+  });
+
+  const type = watch('type');
+
+  const { data: existing, isLoading } = useQuery({
+    queryKey: ['customer', id],
+    queryFn: async () => (await api.get<Customer>(`/customers/${id}`)).data,
+    enabled: isEdit,
+  });
+
+  useEffect(() => {
+    if (existing) {
+      reset({
+        type: existing.type,
+        name: existing.name,
+        tradeName: existing.tradeName ?? '',
+        document: existing.document,
+        email: existing.email ?? '',
+        phone: existing.phone ?? '',
+        birthDate: existing.birthDate?.slice(0, 10) ?? '',
+        foundationDate: existing.foundationDate?.slice(0, 10) ?? '',
+        occupation: existing.occupation ?? '',
+        monthlyIncome: existing.monthlyIncome,
+        internalScore: existing.internalScore,
+        status: existing.status,
+        notes: existing.notes ?? '',
+        street: existing.address?.street ?? '',
+        number: existing.address?.number ?? '',
+        district: existing.address?.district ?? '',
+        city: existing.address?.city ?? '',
+        state: existing.address?.state ?? '',
+        zipCode: existing.address?.zipCode ?? '',
+      });
+    }
+  }, [existing, reset]);
+
+  const onSubmit = async (v: FormValues) => {
+    const payload: Record<string, unknown> = {
+      type: v.type,
+      name: v.name,
+      tradeName: v.tradeName || undefined,
+      document: v.document,
+      email: v.email || undefined,
+      phone: v.phone || undefined,
+      birthDate: v.type === 'INDIVIDUAL' && v.birthDate ? new Date(v.birthDate).toISOString() : undefined,
+      foundationDate: v.type === 'COMPANY' && v.foundationDate ? new Date(v.foundationDate).toISOString() : undefined,
+      occupation: v.occupation || undefined,
+      monthlyIncome: v.monthlyIncome,
+      internalScore: v.internalScore,
+      status: v.status,
+      notes: v.notes || undefined,
+    };
+    if (v.street && v.city && v.state && v.zipCode) {
+      payload.address = {
+        street: v.street,
+        number: v.number || undefined,
+        district: v.district || undefined,
+        city: v.city,
+        state: v.state,
+        zipCode: v.zipCode,
+      };
+    }
+
+    try {
+      const res = isEdit
+        ? await api.patch<Customer>(`/customers/${id}`, payload)
+        : await api.post<Customer>('/customers', payload);
+      toast.success(isEdit ? 'Cliente atualizado' : 'Cliente cadastrado');
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      navigate(`/customers/${res.data.id}`);
+    } catch (err) {
+      toast.error(apiError(err));
+    }
+  };
+
+  if (isEdit && isLoading) return <LoadingState />;
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+        <ArrowLeft className="h-4 w-4" /> Voltar
+      </button>
+      <PageHeader title={isEdit ? 'Editar cliente' : 'Novo cliente'} />
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <section className="card space-y-4 p-6">
+          <h3 className="font-semibold text-slate-800">Identificação</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Tipo">
+              <select className="input" {...register('type')}>
+                <option value="INDIVIDUAL">Pessoa Física</option>
+                <option value="COMPANY">Pessoa Jurídica</option>
+              </select>
+            </Field>
+            <Field label="Status">
+              <select className="input" {...register('status')}>
+                <option value="PROSPECT">Prospect</option>
+                <option value="ACTIVE">Ativo</option>
+                <option value="INACTIVE">Inativo</option>
+                <option value="BLOCKED">Bloqueado</option>
+              </select>
+            </Field>
+            <Field label={type === 'COMPANY' ? 'Razão social' : 'Nome completo'} error={errors.name?.message}>
+              <input className="input" {...register('name')} />
+            </Field>
+            {type === 'COMPANY' && (
+              <Field label="Nome fantasia">
+                <input className="input" {...register('tradeName')} />
+              </Field>
+            )}
+            <Field label={type === 'COMPANY' ? 'CNPJ' : 'CPF'} error={errors.document?.message}>
+              <input className="input" placeholder="apenas dígitos ou formatado" {...register('document')} />
+            </Field>
+            <Field label={type === 'COMPANY' ? 'Data de fundação' : 'Data de nascimento'}>
+              <input type="date" className="input" {...register(type === 'COMPANY' ? 'foundationDate' : 'birthDate')} />
+            </Field>
+          </div>
+        </section>
+
+        <section className="card space-y-4 p-6">
+          <h3 className="font-semibold text-slate-800">Contato e perfil financeiro</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="E-mail" error={errors.email?.message}>
+              <input className="input" {...register('email')} />
+            </Field>
+            <Field label="Telefone">
+              <input className="input" {...register('phone')} />
+            </Field>
+            <Field label={type === 'COMPANY' ? 'Ramo de atividade' : 'Profissão'}>
+              <input className="input" {...register('occupation')} />
+            </Field>
+            <Field label={type === 'COMPANY' ? 'Faturamento mensal (R$)' : 'Renda mensal (R$)'}>
+              <input type="number" step="0.01" className="input" {...register('monthlyIncome')} />
+            </Field>
+            <Field label="Score interno (0–1000)">
+              <input type="number" className="input" {...register('internalScore')} />
+            </Field>
+          </div>
+        </section>
+
+        <section className="card space-y-4 p-6">
+          <h3 className="font-semibold text-slate-800">Endereço</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+            <div className="sm:col-span-4"><Field label="Logradouro"><input className="input" {...register('street')} /></Field></div>
+            <div className="sm:col-span-2"><Field label="Número"><input className="input" {...register('number')} /></Field></div>
+            <div className="sm:col-span-3"><Field label="Bairro"><input className="input" {...register('district')} /></Field></div>
+            <div className="sm:col-span-3"><Field label="Cidade"><input className="input" {...register('city')} /></Field></div>
+            <div className="sm:col-span-4"><Field label="CEP"><input className="input" {...register('zipCode')} /></Field></div>
+            <div className="sm:col-span-2"><Field label="UF"><input maxLength={2} className="input uppercase" {...register('state')} /></Field></div>
+          </div>
+        </section>
+
+        <section className="card p-6">
+          <Field label="Observações">
+            <textarea rows={3} className="input" {...register('notes')} />
+          </Field>
+        </section>
+
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => navigate(-1)}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={isSubmitting}>
+            {isSubmitting && <Spinner className="h-4 w-4" />}
+            {isEdit ? 'Salvar alterações' : 'Cadastrar cliente'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      {children}
+      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
+    </div>
+  );
+}

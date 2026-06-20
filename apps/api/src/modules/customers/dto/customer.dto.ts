@@ -1,0 +1,138 @@
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import {
+  ContactType,
+  CustomerStatus,
+  CustomerType,
+  DocumentType,
+} from '@prisma/client';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsISO8601,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
+
+export class AddressDto {
+  @ApiProperty() @IsString() @MinLength(2) street!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() number?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() complement?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() district?: string;
+  @ApiProperty() @IsString() city!: string;
+  @ApiProperty({ example: 'SP' }) @IsString() @MaxLength(2) state!: string;
+  @ApiProperty({ example: '01001-000' }) @IsString() zipCode!: string;
+  @ApiPropertyOptional({ default: 'BR' }) @IsOptional() @IsString() country?: string;
+}
+
+export class ContactDto {
+  @ApiProperty({ enum: ContactType }) @IsEnum(ContactType) type!: ContactType;
+  @ApiProperty() @IsString() value!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() label?: string;
+  @ApiPropertyOptional() @IsOptional() isPrimary?: boolean;
+}
+
+export class CustomerDocumentDto {
+  @ApiProperty({ enum: DocumentType }) @IsEnum(DocumentType) type!: DocumentType;
+  @ApiPropertyOptional() @IsOptional() @IsString() number?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() issuer?: string;
+  @ApiPropertyOptional() @IsOptional() @IsISO8601() issueDate?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() fileUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+}
+
+export class CreateCustomerDto {
+  @ApiProperty({ enum: CustomerType })
+  @IsEnum(CustomerType)
+  type!: CustomerType;
+
+  @ApiProperty({ example: 'João da Silva' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(150)
+  name!: string;
+
+  @ApiPropertyOptional({ description: 'PJ trade name (nome fantasia)' })
+  @IsOptional()
+  @IsString()
+  tradeName?: string;
+
+  @ApiProperty({ description: 'CPF (PF) or CNPJ (PJ); digits or formatted', example: '390.533.447-05' })
+  @IsString()
+  document!: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
+  @ApiPropertyOptional({ description: 'PF birth date (ISO)' }) @IsOptional() @IsISO8601() birthDate?: string;
+  @ApiPropertyOptional({ description: 'PJ foundation date (ISO)' }) @IsOptional() @IsISO8601() foundationDate?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() occupation?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() employerName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() employmentType?: string;
+
+  @ApiPropertyOptional({ description: 'Monthly income (PF) or revenue (PJ)', default: 0 })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  monthlyIncome?: number;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 1000, default: 500 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  internalScore?: number;
+
+  @ApiPropertyOptional({ enum: CustomerStatus })
+  @IsOptional()
+  @IsEnum(CustomerStatus)
+  status?: CustomerStatus;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+
+  @ApiPropertyOptional({ type: AddressDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AddressDto)
+  address?: AddressDto;
+
+  @ApiPropertyOptional({ type: [ContactDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ContactDto)
+  contacts?: ContactDto[];
+
+  @ApiPropertyOptional({ type: [CustomerDocumentDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CustomerDocumentDto)
+  documents?: CustomerDocumentDto[];
+}
+
+export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {}
+
+export class CustomerQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ enum: CustomerType }) @IsOptional() @IsEnum(CustomerType) type?: CustomerType;
+  @ApiPropertyOptional({ enum: CustomerStatus }) @IsOptional() @IsEnum(CustomerStatus) status?: CustomerStatus;
+}
+
+export class UpdateStatusDto {
+  @ApiProperty({ enum: CustomerStatus }) @IsEnum(CustomerStatus) status!: CustomerStatus;
+  @ApiPropertyOptional() @IsOptional() @IsString() reason?: string;
+}
+
+export class UpdateScoreDto {
+  @ApiProperty({ minimum: 0, maximum: 1000 }) @IsInt() @Min(0) @Max(1000) score!: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() reason?: string;
+}

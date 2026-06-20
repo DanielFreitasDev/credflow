@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: credflow_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-credflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-credflow_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-credflow}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-credflow} -d ${POSTGRES_DB:-credflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+    container_name: credflow_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-credflow}:${POSTGRES_PASSWORD:-credflow_secret}@db:5432/${POSTGRES_DB:-credflow}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-3333}:3333"
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3333}
+    container_name: credflow_web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
