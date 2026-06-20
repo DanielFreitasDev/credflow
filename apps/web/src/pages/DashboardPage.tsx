@@ -16,6 +16,7 @@ import { api, apiError } from '../lib/api';
 import { DashboardOverview } from '../lib/types';
 import { currency, monthLabel, number, percent, contractStatusLabel, proposalStatusLabel } from '../lib/format';
 import { ErrorState, LoadingState, PageHeader } from '../components/ui';
+import { useTheme } from '../lib/theme';
 
 const RISK_COLORS: Record<string, string> = { A: '#10b981', B: '#0ea5e9', C: '#f59e0b', D: '#f97316', E: '#ef4444' };
 
@@ -32,6 +33,7 @@ function KpiCard({ icon, label, value, tone }: { icon: ReactNode; label: string;
 }
 
 export function DashboardPage() {
+  const { theme } = useTheme();
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: async () => (await api.get<DashboardOverview>('/dashboard/overview')).data,
@@ -41,6 +43,16 @@ export function DashboardPage() {
   if (error || !data) return <ErrorState message={apiError(error)} />;
 
   const { kpis } = data;
+  const isDark = theme === 'dark';
+  // Recharts renders to SVG (no Tailwind), so chart colors are themed explicitly here.
+  const axisColor = isDark ? '#94a3b8' : '#64748b'; // slate-400 / slate-500
+  const tooltipStyle = {
+    backgroundColor: isDark ? '#0f172a' : '#ffffff', // slate-900 / white
+    border: `1px solid ${isDark ? '#1e293b' : '#e2e8f0'}`, // slate-800 / slate-200
+    borderRadius: '0.5rem',
+    color: isDark ? '#e2e8f0' : '#0f172a',
+  };
+  const tooltipItemStyle = { color: isDark ? '#e2e8f0' : '#0f172a' };
 
   return (
     <div>
@@ -65,9 +77,15 @@ export function DashboardPage() {
           <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-200">Recebimentos futuros (6 meses)</h3>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={data.upcomingReceivables.map((r) => ({ ...r, label: monthLabel(r.month) }))}>
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-              <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} stroke="#94a3b8" />
-              <Tooltip formatter={(v: number) => currency(v)} cursor={{ fill: '#eef2ff' }} />
+              <XAxis dataKey="label" tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
+              <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
+              <Tooltip
+                formatter={(v: number) => currency(v)}
+                cursor={{ fill: isDark ? 'rgba(99,102,241,0.18)' : '#eef2ff' }}
+                contentStyle={tooltipStyle}
+                labelStyle={{ color: isDark ? '#f1f5f9' : '#0f172a' }}
+                itemStyle={tooltipItemStyle}
+              />
               <Bar dataKey="amount" fill="#4f46e5" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -90,7 +108,7 @@ export function DashboardPage() {
                   <Cell key={e.band} fill={RISK_COLORS[e.band]} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} />
             </PieChart>
           </ResponsiveContainer>
         </div>

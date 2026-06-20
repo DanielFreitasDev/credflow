@@ -102,6 +102,7 @@ Status changes are validated, not free-form. When editing these flows, keep the 
 - `lib/api.ts` — single Axios instance. Request interceptor attaches the bearer token; response interceptor does a **single refresh-and-retry on 401** (deduped through a shared `refreshing` promise) and bounces to `/login` on failure. Tokens live in `localStorage`. Auth routes are excluded from the retry.
 - Routing in `App.tsx`: `ProtectedRoute` wraps `Layout` wraps the pages.
 - Server state via **TanStack Query** (`lib/hooks.ts`); forms via **React Hook Form + Zod**; shared types in `lib/types.ts`.
+- **Theming / dark mode**: Tailwind `darkMode: 'class'`. `lib/theme.tsx` (`ThemeProvider`/`useTheme`) toggles the `dark` class on `<html>`, persists to `localStorage` (`credflow.theme`), and falls back to `prefers-color-scheme`. An inline script in `index.html` applies the theme **before paint** (no FOUC) — keep its storage key in sync with `theme.tsx`. New UI must carry `dark:` variants (palette: surfaces `slate-900/950`, text `slate-100→400`, borders `slate-700/800`, soft accents `{color}-500/10`). Recharts renders SVG outside Tailwind, so its colors are themed explicitly via `useTheme()` in `DashboardPage`.
 
 ## Database
 - Schema: `apps/api/prisma/schema.prisma` (single migration `0_init` so far). Money columns are `Decimal(14,2)`, rates `Decimal(9,6)`.
