@@ -12,7 +12,8 @@ import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
-export type SafeUser = Omit<User, 'passwordHash'>;
+// `failedLoginCount`/`lockedUntil` are internal security state, never serialized.
+export type SafeUser = Omit<User, 'passwordHash' | 'failedLoginCount' | 'lockedUntil'>;
 
 const SELECT_SAFE = {
   id: true,
@@ -105,7 +106,16 @@ export class UsersService {
     if (dto.password) {
       data.passwordHash = await UsersService.hashPassword(dto.password);
     }
-    return this.prisma.user.update({ where: { id }, data, select: SELECT_SAFE });
+    const updated = await this.prisma.user.update({ where: { id }, data, select: SELECT_SAFE });
+    if (dto.password) {
+      // An admin-forced password reset must invalidate the target user's active
+      // sessions, mirroring self-service change-password.
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+    return updated;
   }
 
   async setActive(id: string, active: boolean): Promise<SafeUser> {

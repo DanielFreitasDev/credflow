@@ -10,6 +10,10 @@ export interface AppConfig {
     refreshTtl: string;
   };
   encryptionKey: string;
+  /** Optional explicit blind-index key (base64, 32 bytes). Derived from encryptionKey when unset. */
+  blindIndexKey?: string;
+  /** Optional bearer token guarding GET /api/metrics. Public when unset (dev). */
+  metricsToken?: string;
   throttle: {
     ttl: number;
     limit: number;
@@ -47,6 +51,8 @@ export default (): AppConfig => {
       refreshTtl: process.env.JWT_REFRESH_TTL ?? '7d',
     },
     encryptionKey: process.env.ENCRYPTION_KEY as string,
+    blindIndexKey: process.env.BLIND_INDEX_KEY || undefined,
+    metricsToken: process.env.METRICS_TOKEN || undefined,
     throttle: {
       ttl: parseInt(process.env.THROTTLE_TTL ?? '60', 10),
       limit: parseInt(process.env.THROTTLE_LIMIT ?? '120', 10),

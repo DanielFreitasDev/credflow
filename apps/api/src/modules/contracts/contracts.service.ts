@@ -8,7 +8,7 @@ import { ContractStatus, Prisma, ProposalStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common/utils/pagination.util';
-import { buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
+import { acquireNumberLock, buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
 import { addMonths, daysBetween, startOfDay } from '../../common/utils/date.util';
 import {
   clampCet,
@@ -68,7 +68,14 @@ export class ContractsService {
       termMonths: proposal.termMonths,
       amortization: proposal.amortizationType,
     });
-    if (proposal.amortizationType === 'PRICE' && isNonAmortizing(costing.schedule)) {
+    // Fees (TAC + IOF) must not equal or exceed the approved cash released.
+    if (costing.iofCents + costing.tacCents >= approvedCents) {
+      throw new BadRequestException(
+        'Os encargos (TAC + IOF) não podem ser maiores ou iguais ao valor aprovado.',
+      );
+    }
+    // Balloon / non-amortizing guard for EVERY amortization type (not only PRICE).
+    if (isNonAmortizing(costing.schedule)) {
       throw new BadRequestException(
         'A taxa é alta demais para o prazo: as parcelas não amortizam o principal.',
       );
@@ -84,6 +91,7 @@ export class ContractsService {
     // a still-APPROVED proposal.
     const contract = await retryOnUniqueViolation(() =>
       this.prisma.$transaction(async (tx) => {
+        await acquireNumberLock(tx, 'CTR', year);
         const count = await tx.contract.count({
           where: { number: { startsWith: `CTR-${year}-` } },
         });

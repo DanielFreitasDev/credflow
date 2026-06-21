@@ -9,10 +9,10 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
-import { buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
+import { acquireNumberLock, buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
 import { addMonths, daysBetween, startOfDay } from '../../common/utils/date.util';
 import { clampCet, computeCet, computeOutstanding, simulate } from '../../domain/finance/finance';
-import { centsToDecimal, reaisToCents } from '../../domain/finance/money';
+import { centsToDecimal, centsToReais, reaisToCents } from '../../domain/finance/money';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import {
   CollectionQueryDto,
@@ -266,20 +266,28 @@ export class CollectionsService {
     let promisesBroken = 0;
     for (const p of pending) {
       const promisedCents = reaisToCents(p.amount);
+      // Attribute only payments that could fulfil THIS promise: same contract,
+      // made after the promise and on/before the promised day (end of day). This
+      // stops an unrelated later payment from silently marking a promise KEPT.
+      const cutoff = new Date(startOfDay(p.promisedDate).getTime() + 24 * 60 * 60 * 1000);
       const paidAgg = await this.prisma.payment.aggregate({
         _sum: { amount: true },
-        where: { contractId: p.case.contractId, paidAt: { gte: p.createdAt } },
+        where: { contractId: p.case.contractId, paidAt: { gte: p.createdAt, lt: cutoff } },
       });
-      const paidSinceCents = reaisToCents(paidAgg._sum.amount ?? 0);
-      if (p.case.status === 'RESOLVED' || paidSinceCents >= promisedCents) {
+      const paidWithinCents = reaisToCents(paidAgg._sum.amount ?? 0);
+      if (p.case.status === 'RESOLVED' || paidWithinCents >= promisedCents) {
         await this.prisma.paymentPromise.update({ where: { id: p.id }, data: { status: 'KEPT' } });
         promisesKept++;
       } else if (startOfDay(p.promisedDate) < today) {
-        await this.prisma.paymentPromise.update({ where: { id: p.id }, data: { status: 'BROKEN' } });
-        await this.prisma.collectionCase.updateMany({
-          where: { id: p.case.id, status: 'PROMISE' },
-          data: { status: 'IN_PROGRESS' },
-        });
+        // Past due and unmet -> broken; pull the case back into active follow-up.
+        // Both writes commit together so case and promise can't disagree.
+        await this.prisma.$transaction([
+          this.prisma.paymentPromise.update({ where: { id: p.id }, data: { status: 'BROKEN' } }),
+          this.prisma.collectionCase.updateMany({
+            where: { id: p.case.id, status: 'PROMISE' },
+            data: { status: 'IN_PROGRESS' },
+          }),
+        ]);
         promisesBroken++;
       }
     }
@@ -391,64 +399,76 @@ export class CollectionsService {
    * of an existing contract into a brand-new contract and closes the old one.
    */
   async renegotiate(contractId: string, dto: RenegotiateDto, actorId?: string) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
-      include: { installments: true },
-    });
-    if (!contract) throw new NotFoundException('Contract not found');
-    if (!['ACTIVE', 'DEFAULTED'].includes(contract.status)) {
-      throw new BadRequestException('Only ACTIVE or DEFAULTED contracts can be renegotiated');
-    }
-
     const today = startOfDay(new Date());
-    let outstandingCents = 0;
-    const unpaidIds: string[] = [];
-    for (const inst of contract.installments) {
-      if (['PAID', 'CANCELLED', 'RENEGOTIATED'].includes(inst.status)) continue;
-      unpaidIds.push(inst.id);
-      const daysLate = daysBetween(startOfDay(inst.dueDate), today);
-      if (daysLate > 0) {
-        // Overdue: consolidate the full outstanding base + accrued fine/mora.
-        const o = computeOutstanding({
-          amountDueCents: reaisToCents(inst.amountDue),
-          amountPaidCents: reaisToCents(inst.amountPaid),
-          lateFeePaidCents: reaisToCents(inst.lateFee),
-          lateInterestPaidCents: reaisToCents(inst.lateInterest),
-          daysLate,
-          fineRate: Number(contract.lateFeeRate),
-          monthlyInterestRate: Number(contract.lateInterestRate),
-        });
-        outstandingCents += o.totalOutstandingCents;
-      } else {
-        // Not yet due: consolidate only the remaining PRINCIPAL. Capitalizing the
-        // unaccrued future interest (amountDue) would charge interest-on-interest
-        // — renegotiating a not-yet-incurred period behaves like an early payoff.
-        const amountPaidCents = reaisToCents(inst.amountPaid);
-        const interestDueCents = reaisToCents(inst.interestDue);
-        const principalDueCents = reaisToCents(inst.principalDue);
-        const principalPaid = Math.max(0, amountPaidCents - interestDueCents); // interest-first
-        outstandingCents += Math.max(0, principalDueCents - principalPaid);
-      }
-    }
-    if (outstandingCents <= 0) throw new BadRequestException('Contract has no outstanding balance to renegotiate');
-
-    const rate = dto.interestRate ?? Number(contract.interestRate);
-    const amortization = dto.amortizationType ?? contract.amortizationType;
-    const sim = simulate({ principalCents: outstandingCents, monthlyRate: rate, termMonths: dto.termMonths, amortization });
-    const cet = computeCet(outstandingCents, sim.schedule.map((s) => s.amount));
-
-    const startDate = new Date();
-    const firstDueDate = dto.firstDueDate ? new Date(dto.firstDueDate) : addMonths(startDate, 1);
-    const endDate = addMonths(firstDueDate, dto.termMonths - 1);
     const year = new Date().getFullYear();
 
-    // New contract + closing the old one (installments, contract status and the
-    // collection case) commit atomically so a renegotiation can't half-apply.
-    const newContract = await retryOnUniqueViolation(() =>
+    // Locking, outstanding computation, new-contract creation and closing the old
+    // one all commit in ONE transaction. The contract + installment row locks
+    // serialise against a concurrent payment (which locks an installment FOR
+    // UPDATE), so the consolidated balance can never be computed from stale data
+    // and the renegotiation can't half-apply.
+    const { created, capitalizedChargesCents } = await retryOnUniqueViolation(() =>
       this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Contract" WHERE id = ${contractId} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM "Installment" WHERE "contractId" = ${contractId} FOR UPDATE`;
+
+        const contract = await tx.contract.findUnique({
+          where: { id: contractId },
+          include: { installments: true },
+        });
+        if (!contract) throw new NotFoundException('Contract not found');
+        if (!['ACTIVE', 'DEFAULTED'].includes(contract.status)) {
+          throw new BadRequestException('Only ACTIVE or DEFAULTED contracts can be renegotiated');
+        }
+
+        let outstandingCents = 0;
+        let capitalized = 0; // fine + mora rolled into the new principal (disclosure)
+        const unpaidIds: string[] = [];
+        for (const inst of contract.installments) {
+          if (['PAID', 'CANCELLED', 'RENEGOTIATED'].includes(inst.status)) continue;
+          unpaidIds.push(inst.id);
+          const daysLate = daysBetween(startOfDay(inst.dueDate), today);
+          if (daysLate > 0) {
+            // Overdue: consolidate the full outstanding base + accrued fine/mora.
+            const o = computeOutstanding({
+              amountDueCents: reaisToCents(inst.amountDue),
+              amountPaidCents: reaisToCents(inst.amountPaid),
+              lateFeePaidCents: reaisToCents(inst.lateFee),
+              lateInterestPaidCents: reaisToCents(inst.lateInterest),
+              daysLate,
+              fineRate: Number(contract.lateFeeRate),
+              monthlyInterestRate: Number(contract.lateInterestRate),
+            });
+            outstandingCents += o.totalOutstandingCents;
+            capitalized += o.fineOutstandingCents + o.interestOutstandingCents;
+          } else {
+            // Not yet due: consolidate only the remaining PRINCIPAL. Capitalizing the
+            // unaccrued future interest (amountDue) would charge interest-on-interest
+            // — renegotiating a not-yet-incurred period behaves like an early payoff.
+            const amountPaidCents = reaisToCents(inst.amountPaid);
+            const interestDueCents = reaisToCents(inst.interestDue);
+            const principalDueCents = reaisToCents(inst.principalDue);
+            const principalPaid = Math.max(0, amountPaidCents - interestDueCents); // interest-first
+            outstandingCents += Math.max(0, principalDueCents - principalPaid);
+          }
+        }
+        if (outstandingCents <= 0) {
+          throw new BadRequestException('Contract has no outstanding balance to renegotiate');
+        }
+
+        const rate = dto.interestRate ?? Number(contract.interestRate);
+        const amortization = dto.amortizationType ?? contract.amortizationType;
+        const sim = simulate({ principalCents: outstandingCents, monthlyRate: rate, termMonths: dto.termMonths, amortization });
+        const cet = computeCet(outstandingCents, sim.schedule.map((s) => s.amount));
+
+        const startDate = new Date();
+        const firstDueDate = dto.firstDueDate ? new Date(dto.firstDueDate) : addMonths(startDate, 1);
+        const endDate = addMonths(firstDueDate, dto.termMonths - 1);
+
+        await acquireNumberLock(tx, 'CTR', year);
         const count = await tx.contract.count({ where: { number: { startsWith: `CTR-${year}-` } } });
         const number = buildSequentialNumber('CTR', year, count + 1);
-        const created = await tx.contract.create({
+        const newContract = await tx.contract.create({
           data: {
             number,
             customerId: contract.customerId,
@@ -487,7 +507,7 @@ export class CollectionsService {
           data: { status: 'RESOLVED', resolvedAt: new Date() },
         });
 
-        return created;
+        return { created: newContract, capitalizedChargesCents: capitalized };
       }),
     );
 
@@ -496,10 +516,17 @@ export class CollectionsService {
       action: 'RENEGOTIATION',
       entity: 'Contract',
       entityId: contractId,
-      after: { newContract: newContract.number, principal: Number(newContract.principal), reason: dto.reason },
+      after: {
+        newContract: created.number,
+        principal: Number(created.principal),
+        // Discloses how much penalty (multa + mora) was capitalized into the new
+        // principal — this portion then accrues the contract interest rate again.
+        capitalizedCharges: centsToReais(capitalizedChargesCents),
+        reason: dto.reason,
+      },
     });
 
-    return newContract;
+    return created;
   }
 
   private async ensureCase(id: string) {

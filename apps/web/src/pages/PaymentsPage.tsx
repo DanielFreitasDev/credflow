@@ -5,12 +5,12 @@ import { api, apiError } from '../lib/api';
 import { Paginated, Payment } from '../lib/types';
 import { currency, dateTime } from '../lib/format';
 import { useDebounce } from '../lib/hooks';
-import { Column, DataTable } from '../components/DataTable';
+import { Column, DataTable, SortState } from '../components/DataTable';
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination } from '../components/ui';
 import { ExportCsvButton } from '../components/ExportCsvButton';
 
 const columns: Column<Payment>[] = [
-  { key: 'paidAt', header: 'Data', render: (p) => dateTime(p.paidAt) },
+  { key: 'paidAt', header: 'Data', sortable: true, render: (p) => dateTime(p.paidAt) },
   { key: 'contract', header: 'Contrato', render: (p) => p.contract?.number ?? '—' },
   { key: 'installment', header: 'Parcela', align: 'center', render: (p) => p.installment?.number ?? '—' },
   { key: 'amount', header: 'Valor', align: 'right', render: (p) => <span className="font-semibold">{currency(p.amount)}</span> },
@@ -23,15 +23,23 @@ const columns: Column<Payment>[] = [
 
 export function PaymentsPage() {
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  // The payments list is ordered by paidAt; only the sort direction is togglable.
+  const [sort, setSort] = useState<SortState>({ by: 'paidAt', order: 'desc' });
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
 
+  const toggleSort = () => {
+    setSort((s) => ({ by: 'paidAt', order: s.order === 'asc' ? 'desc' : 'asc' }));
+    setPage(1);
+  };
+
   const { data, isLoading, error, isFetching } = useQuery({
-    queryKey: ['payments', page, debouncedSearch],
+    queryKey: ['payments', page, pageSize, sort.order, debouncedSearch],
     queryFn: async () =>
       (
         await api.get<Paginated<Payment>>('/payments', {
-          params: { page, pageSize: 15, search: debouncedSearch || undefined },
+          params: { page, pageSize, sortOrder: sort.order, search: debouncedSearch || undefined },
         })
       ).data,
   });
@@ -68,9 +76,9 @@ export function PaymentsPage() {
         ) : (
           <>
             <div className={isFetching ? 'opacity-60 transition' : ''}>
-              <DataTable columns={columns} data={data.data} />
+              <DataTable columns={columns} data={data.data} sort={sort} onSort={toggleSort} />
             </div>
-            <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} />
+            <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} pageSize={pageSize} onPageSize={(n) => { setPageSize(n); setPage(1); }} />
           </>
         )}
       </div>

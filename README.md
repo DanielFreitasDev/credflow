@@ -44,7 +44,7 @@ Sistema completo, modular e pronto para produção para empresas que oferecem cr
 | **Propostas** | Simulação de empréstimo (Price / SAC / Juros simples), cálculo de parcelas, IOF, TAC, **CET (mensal e anual via IRR)**, máquina de estados (rascunho → análise → aprovada/recusada → contratada → cancelada) com histórico de eventos. |
 | **Análise de crédito** | Motor de regras **configurável e explicável**, score, faixa de risco (A–E), limite sugerido, comprometimento de renda, decisão automática **e** manual, registro auditável dos motivos. |
 | **Contratos** | Geração a partir de proposta aprovada, número único, cronograma de parcelas, encargos de mora configuráveis, status (ativo, quitado, inadimplente, cancelado, renegociado). |
-| **Parcelas e pagamentos** | Geração automática, pagamento parcial e em atraso, **multa + juros de mora pró-rata**, alocação em cascata (mora → multa → juros → principal), baixa e quitação, conciliação básica. |
+| **Parcelas e pagamentos** | Geração automática, pagamento parcial e em atraso, **multa + juros de mora pró-rata**, alocação em cascata (mora → multa → juros → principal), **idempotência** (chave anti-cobrança-dupla), baixa e quitação, conciliação básica. |
 | **Cobrança** | Régua automática (marca vencidos, abre/fecha casos), dias em atraso, interações, promessas de pagamento, **renegociação de dívida** (consolida saldo em novo contrato). |
 | **Dashboard** | Carteira, total emprestado/recebido/em atraso, taxa de inadimplência, propostas/contratos por status, clientes por risco, fluxo de recebimentos futuros (6 meses). |
 | **Segurança** | JWT (access + refresh com rotação), Argon2id, RBAC por papéis, Helmet, rate limiting, validação forte, **criptografia AES-256-GCM** de PII sensível, trilha de auditoria. |
@@ -212,8 +212,10 @@ npm run dev                         # http://localhost:5173
 | `JWT_ACCESS_TTL` | Validade do access token | `900s` |
 | `JWT_REFRESH_TTL` | Validade do refresh token | `7d` |
 | `ENCRYPTION_KEY` | Chave AES-256 (**32 bytes em base64**) | `openssl rand -base64 32` |
+| `BLIND_INDEX_KEY` | **Opcional.** Chave dedicada (32 bytes base64) do blind index HMAC do CPF/CNPJ. Se vazia, é derivada da `ENCRYPTION_KEY` via HKDF (separação de domínio). Trocá-la exige `npm run db:backfill-documents`. | vazio (derivada) |
 | `THROTTLE_TTL` / `THROTTLE_LIMIT` | Janela (s) e limite global de requisições | `60` / `120` |
 | `THROTTLER_REDIS_URL` | Redis para rate-limit **compartilhado entre réplicas** (opcional; vazio = memória local) | `redis://localhost:6379` |
+| `METRICS_TOKEN` | **Opcional.** Bearer token que protege `GET /api/metrics`. Se vazio, `/metrics` fica público (restrinja na rede). | vazio (público) |
 | `RUN_SEED` | Roda o seed no start do container (`docker-entrypoint.sh`). **Use `false` em produção.** | `true` |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Admin criado no seed | `admin@credflow.dev` / `Admin@123456` |
 | `VITE_API_URL` | URL da API usada pelo frontend | `http://localhost:3333` |
@@ -225,7 +227,7 @@ npm run dev                         # http://localhost:5173
 ## 💾 Banco de dados, migrations e seed
 
 - **Schema:** `apps/api/prisma/schema.prisma` (16 modelos, enums nativos).
-- **Migrations:** quatro até agora — `0_init` (schema base), `20260621000000_protect_customer_document` (cifra do CPF/CNPJ + blind index), `20260621201957_widen_cet_indexes_protect_payments` (CET em `Decimal(12,6)`, índices e FKs de pagamento como `RESTRICT`) e `20260621211730_harden_indexes_constraints_dunning` (índices trigram **pg_trgm** para busca, `dunningStage` da régua, índices de promessas e **CHECK constraints** de faixa). Aplique todas com `npx prisma migrate deploy`. Os índices trigram exigem a extensão **pg_trgm** (gerenciada pelo Prisma; o papel de banco precisa poder `CREATE EXTENSION`, ou pré-instale a extensão se o provedor restringir).
+- **Migrations:** cinco até agora — `0_init` (schema base), `20260621000000_protect_customer_document` (cifra do CPF/CNPJ + blind index), `20260621201957_widen_cet_indexes_protect_payments` (CET em `Decimal(12,6)`, índices e FKs de pagamento como `RESTRICT`), `20260621211730_harden_indexes_constraints_dunning` (índices trigram **pg_trgm** para busca, `dunningStage` da régua, índices de promessas e **CHECK constraints** de faixa) e `20260621230000_harden_lockout_idempotency_indexes` (lockout de conta em `User`, `idempotencyKey` único em `Payment`, índices `daysOverdue`/`internalScore`, e CHECK de ordenação de datas + teto de taxas). Aplique todas com `npx prisma migrate deploy`. Os índices trigram exigem a extensão **pg_trgm** (gerenciada pelo Prisma; o papel de banco precisa poder `CREATE EXTENSION`, ou pré-instale a extensão se o provedor restringir).
 - **Criar novas migrations (dev):** `npx prisma migrate dev --name <nome>`.
 - **Seed (idempotente):** `npm run db:seed` — cria usuários, 10 clientes, propostas em vários status, contratos com parcelas/pagamentos, um caso de cobrança em atraso e propostas standalone. Reexecutar não duplica o ciclo de empréstimos.
 - **Prisma Studio:** `npm run prisma:studio` para inspecionar os dados.
@@ -322,11 +324,11 @@ Senhas dos perfis no seed: `gerente@credflow.dev / Gerente@123`, `analista@credf
 ## 🔒 Segurança (OWASP)
 
 - **A01 Broken Access Control** — `JwtAuthGuard` global + `RolesGuard` por papel; rotas públicas explícitas com `@Public()`.
-- **A02 Cryptographic Failures** — Argon2id para senhas; **AES-256-GCM** para PII sensível em repouso (CPF/CNPJ do cliente e nº de documentos), com **blind index** determinístico para unicidade/busca e chave validada no boot.
+- **A02 Cryptographic Failures** — Argon2id para senhas; **AES-256-GCM** para PII sensível em repouso (CPF/CNPJ do cliente e nº de documentos), com **blind index HMAC-SHA256** (chave dedicada derivada via HKDF, separada da chave AES — não é força-bruteável sem a chave) para unicidade/busca, e chave validada no boot.
 - **A03 Injection** — Prisma (consultas parametrizadas) + `ValidationPipe` (whitelist, `forbidNonWhitelisted`).
 - **A04 Insecure Design** — máquinas de estado, transações no banco, dinheiro em centavos.
 - **A05 Misconfiguration** — Helmet, CORS restrito por env, validação fail-fast de variáveis.
-- **A07 Auth Failures** — refresh com **rotação e revogação**, verificação contra timing-attack no login, invalidação de sessões na troca de senha, rate limiting (mais **estrito** em `/auth/login` e `/auth/refresh`).
+- **A07 Auth Failures** — refresh com **rotação e revogação** (algoritmo JWT fixado em HS256), verificação contra timing-attack no login, **bloqueio de conta** após 5 tentativas falhas (15 min), invalidação de sessões na troca **e no reset de senha por admin**, rate limiting (mais **estrito** em `/auth/login` e `/auth/refresh`).
 - **A09 Logging** — trilha de auditoria append-only (`AuditLog`) para operações sensíveis.
 
 ---

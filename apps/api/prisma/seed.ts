@@ -16,7 +16,7 @@ import { DEFAULT_POLICY, evaluateCredit } from '../src/domain/finance/credit-pol
 import { centsToDecimal, reaisToCents } from '../src/domain/finance/money';
 import { addMonths, daysBetween, startOfDay } from '../src/common/utils/date.util';
 import { buildSequentialNumber } from '../src/common/utils/sequence.util';
-import { blindIndexWithKey, encryptWithKey, last4 } from '../src/common/crypto/pii.util';
+import { blindIndexWithKey, deriveBlindIndexKey, encryptWithKey, last4 } from '../src/common/crypto/pii.util';
 
 const prisma = new PrismaClient();
 
@@ -83,9 +83,14 @@ const CUSTOMERS: CustomerSeed[] = [
 ];
 
 async function seedCustomers(creatorId: string) {
+  // Same domain-separated blind-index key the API derives, so seeded hashes match
+  // what the running app computes (HMAC over the derived key, never the AES key).
+  const blindKey = process.env.BLIND_INDEX_KEY
+    ? Buffer.from(process.env.BLIND_INDEX_KEY, 'base64')
+    : deriveBlindIndexKey(ENCRYPTION_KEY);
   const created: { id: string; type: CustomerType; income: number; score: number; name: string }[] = [];
   for (const c of CUSTOMERS) {
-    const documentHash = blindIndexWithKey(ENCRYPTION_KEY, c.document);
+    const documentHash = blindIndexWithKey(blindKey, c.document);
     const customer = await prisma.customer.upsert({
       where: { documentHash },
       update: { internalScore: c.internalScore, monthlyIncome: c.monthlyIncome },

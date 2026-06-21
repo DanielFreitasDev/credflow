@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InstallmentStatus, PaymentMethod, Prisma } from '@prisma/client';
+import { InstallmentStatus, Payment, PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
@@ -28,11 +28,37 @@ export class PaymentsService {
     const payCents = reaisToCents(dto.amount);
     if (payCents <= 0) throw new BadRequestException('Amount must be positive');
     const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
+    // Reject future-dated payments — they would inflate days-late and overcharge
+    // mora. Allow 60s of clock skew between client and server.
+    if (paidAt.getTime() > Date.now() + 60_000) {
+      throw new BadRequestException('paidAt cannot be in the future');
+    }
+
+    // Idempotent replay: a retried submission with the same key returns the
+    // original payment instead of charging twice.
+    if (dto.idempotencyKey) {
+      const prior = await this.prisma.payment.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+      });
+      if (prior) return prior;
+    }
 
     // Lock + allocate + write + settle + refresh-arrears all commit in ONE
     // transaction. The row lock serialises concurrent payments against the same
     // installment, eliminating the read-modify-write lost-update window.
-    const { payment, newStatus, allocation } = await this.prisma.$transaction(async (tx) => {
+    let result: {
+      payment: Payment;
+      newStatus: InstallmentStatus;
+      allocation: {
+        payMora: number;
+        payFine: number;
+        principalPortion: number;
+        interestPortion: number;
+        allocatedCents: number;
+      };
+    };
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Installment" WHERE id = ${dto.installmentId} FOR UPDATE`;
       const installment = await tx.installment.findUnique({
         where: { id: dto.installmentId },
@@ -96,6 +122,7 @@ export class PaymentsService {
 
       const payment = await tx.payment.create({
         data: {
+          idempotencyKey: dto.idempotencyKey,
           contractId: installment.contractId,
           installmentId: installment.id,
           amount: centsToDecimal(allocatedCents),
@@ -129,7 +156,19 @@ export class PaymentsService {
         newStatus,
         allocation: { payMora, payFine, principalPortion, interestPortion, allocatedCents },
       };
-    });
+      });
+    } catch (err) {
+      // Concurrent same-key submissions: the unique index throws P2002 on the
+      // loser — return the already-persisted payment instead of erroring.
+      if (dto.idempotencyKey && (err as { code?: string }).code === 'P2002') {
+        const prior = await this.prisma.payment.findUnique({
+          where: { idempotencyKey: dto.idempotencyKey },
+        });
+        if (prior) return prior;
+      }
+      throw err;
+    }
+    const { payment, newStatus, allocation } = result;
 
     await this.audit.record({
       userId: actorId,
@@ -153,7 +192,13 @@ export class PaymentsService {
   async settleInstallment(installmentId: string, dto: SettleInstallmentDto, actorId?: string) {
     const preview = await this.contracts.previewCharges(installmentId, dto.paidAt);
     return this.register(
-      { installmentId, amount: preview.totalDue, method: dto.method, paidAt: dto.paidAt },
+      {
+        installmentId,
+        amount: preview.totalDue,
+        method: dto.method,
+        paidAt: dto.paidAt,
+        idempotencyKey: dto.idempotencyKey,
+      },
       actorId,
     );
   }

@@ -39,6 +39,14 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     throw new Error('ENCRYPTION_KEY must be 32 bytes encoded in base64 (run: openssl rand -base64 32).');
   }
 
+  // Optional dedicated blind-index key — when provided it must also be 32 bytes.
+  if (config.BLIND_INDEX_KEY && `${config.BLIND_INDEX_KEY}`.trim() !== '') {
+    const biBytes = Buffer.from(`${config.BLIND_INDEX_KEY}`, 'base64');
+    if (biBytes.length !== 32) {
+      throw new Error('BLIND_INDEX_KEY must be 32 bytes encoded in base64 (run: openssl rand -base64 32).');
+    }
+  }
+
   // Production hardening: refuse to boot with example/placeholder secrets or a
   // wildcard CORS origin — these are safe for local dev but catastrophic in prod.
   const nodeEnv = `${config.NODE_ENV ?? process.env.NODE_ENV ?? 'development'}`;

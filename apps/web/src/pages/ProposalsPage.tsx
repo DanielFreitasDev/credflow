@@ -5,32 +5,46 @@ import { Plus, Search } from 'lucide-react';
 import { api, apiError } from '../lib/api';
 import { Paginated, Proposal } from '../lib/types';
 import { currency, percentFromFraction, proposalStatusLabel } from '../lib/format';
-import { Column, DataTable } from '../components/DataTable';
+import { Column, DataTable, SortState } from '../components/DataTable';
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, StatusBadge } from '../components/ui';
 import { ExportCsvButton } from '../components/ExportCsvButton';
 
 const columns: Column<Proposal>[] = [
-  { key: 'number', header: 'Número', render: (p) => <span className="font-semibold text-slate-800 dark:text-slate-100">{p.number}</span> },
+  { key: 'number', header: 'Número', sortable: true, render: (p) => <span className="font-semibold text-slate-800 dark:text-slate-100">{p.number}</span> },
   { key: 'customer', header: 'Cliente', render: (p) => p.customer?.name ?? '—' },
-  { key: 'requestedAmount', header: 'Valor', align: 'right', render: (p) => currency(p.requestedAmount) },
+  { key: 'requestedAmount', header: 'Valor', align: 'right', sortable: true, render: (p) => currency(p.requestedAmount) },
   { key: 'termMonths', header: 'Prazo', align: 'right', render: (p) => `${p.termMonths}x` },
   { key: 'interestRate', header: 'Taxa/mês', align: 'right', render: (p) => percentFromFraction(p.interestRate) },
   { key: 'cetAnnual', header: 'CET a.a.', align: 'right', render: (p) => percentFromFraction(p.cetAnnual) },
-  { key: 'status', header: 'Status', render: (p) => <StatusBadge status={p.status} label={proposalStatusLabel[p.status]} /> },
+  { key: 'status', header: 'Status', sortable: true, render: (p) => <StatusBadge status={p.status} label={proposalStatusLabel[p.status]} /> },
 ];
 
 export function ProposalsPage() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sort, setSort] = useState<SortState>({ by: 'createdAt', order: 'desc' });
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
 
+  const toggleSort = (key: string) => {
+    setSort((s) => ({ by: key, order: s.by === key && s.order === 'asc' ? 'desc' : 'asc' }));
+    setPage(1);
+  };
+
   const { data, isLoading, error, isFetching } = useQuery({
-    queryKey: ['proposals', page, search, status],
+    queryKey: ['proposals', page, pageSize, sort.by, sort.order, search, status],
     queryFn: async () =>
       (
         await api.get<Paginated<Proposal>>('/proposals', {
-          params: { page, pageSize: 10, search: search || undefined, status: status || undefined },
+          params: {
+            page,
+            pageSize,
+            sortBy: sort.by,
+            sortOrder: sort.order,
+            search: search || undefined,
+            status: status || undefined,
+          },
         })
       ).data,
   });
@@ -73,9 +87,9 @@ export function ProposalsPage() {
         ) : (
           <>
             <div className={isFetching ? 'opacity-60 transition' : ''}>
-              <DataTable columns={columns} data={data.data} onRowClick={(p) => navigate(`/proposals/${p.id}`)} rowLabel={(p) => `Abrir proposta ${p.number}`} />
+              <DataTable columns={columns} data={data.data} onRowClick={(p) => navigate(`/proposals/${p.id}`)} rowLabel={(p) => `Abrir proposta ${p.number}`} sort={sort} onSort={toggleSort} />
             </div>
-            <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} />
+            <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} pageSize={pageSize} onPageSize={(n) => { setPageSize(n); setPage(1); }} />
           </>
         )}
       </div>

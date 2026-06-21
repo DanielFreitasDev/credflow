@@ -172,6 +172,9 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
   const toast = useToast();
   // Tracks whether the user manually edited the amount; until then it mirrors the computed charges.
   const [amountTouched, setAmountTouched] = useState(false);
+  // Stable per-modal idempotency key: a double-clicked / retried submit reuses it
+  // so the backend replays the original payment instead of charging twice.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
   const {
     register,
     handleSubmit,
@@ -204,7 +207,7 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
 
   const submit = async (v: PaymentValues) => {
     try {
-      await api.post('/payments', { installmentId: installment.id, amount: v.amount, method: v.method, paidAt: new Date(v.paidAt).toISOString() });
+      await api.post('/payments', { installmentId: installment.id, amount: v.amount, method: v.method, paidAt: new Date(v.paidAt).toISOString(), idempotencyKey });
       toast.success('Pagamento registrado');
       onDone();
       onClose();

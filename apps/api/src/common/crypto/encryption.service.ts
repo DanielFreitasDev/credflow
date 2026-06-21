@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { blindIndexWithKey, decryptWithKey, encryptWithKey } from './pii.util';
+import { blindIndexWithKey, decryptWithKey, deriveBlindIndexKey, encryptWithKey } from './pii.util';
 
 /**
  * Authenticated symmetric encryption (AES-256-GCM) for sensitive PII at rest.
@@ -10,9 +10,13 @@ import { blindIndexWithKey, decryptWithKey, encryptWithKey } from './pii.util';
 @Injectable()
 export class EncryptionService {
   private readonly key: Buffer;
+  /** Dedicated, domain-separated key for the HMAC blind index (never the AES key). */
+  private readonly blindKey: Buffer;
 
   constructor(config: ConfigService) {
     this.key = Buffer.from(config.getOrThrow<string>('encryptionKey'), 'base64');
+    const explicit = config.get<string>('blindIndexKey');
+    this.blindKey = explicit ? Buffer.from(explicit, 'base64') : deriveBlindIndexKey(this.key);
   }
 
   encrypt(plaintext: string): string {
@@ -79,8 +83,8 @@ export class EncryptionService {
     this.presentDocumentField(obj, undefined);
   }
 
-  /** Deterministic, non-reversible hash — useful for blind-indexing/lookups. */
+  /** Deterministic, non-reversible HMAC — useful for blind-indexing/lookups. */
   blindIndex(value: string): string {
-    return blindIndexWithKey(this.key, value);
+    return blindIndexWithKey(this.blindKey, value);
   }
 }

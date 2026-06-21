@@ -7,7 +7,7 @@ import { PaymentsService } from './payments.service';
  * assert the exact waterfall split written to `payment.create` without a DB.
  */
 describe('PaymentsService.register — allocation', () => {
-  function setup(installment: Record<string, unknown>) {
+  function setup(installment: Record<string, unknown>, prior?: unknown) {
     const created: Record<string, unknown>[] = [];
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
@@ -22,7 +22,10 @@ describe('PaymentsService.register — allocation', () => {
         }),
       },
     };
-    const prisma = { $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)) };
+    const prisma = {
+      $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
+      payment: { findUnique: jest.fn().mockResolvedValue(prior ?? null) },
+    };
     const contracts = { recomputeContractStatus: jest.fn().mockResolvedValue(undefined) };
     const collections = { refreshContract: jest.fn().mockResolvedValue(undefined) };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -96,5 +99,24 @@ describe('PaymentsService.register — allocation', () => {
     expect(created[0].lateFeePortion).toBe('0.00');
     expect(created[0].principalPortion).toBe('0.00');
     expect(created[0].interestPortion).toBe('0.00');
+  });
+
+  it('replays idempotently: a duplicate key returns the prior payment, no re-charge', async () => {
+    const prior = { id: 'pay_prior' };
+    const { service, tx } = setup({ ...futureInstallment }, prior);
+    const out = await service.register(
+      { installmentId: 'inst_1', amount: 100, idempotencyKey: 'k1' } as never,
+      'user_1',
+    );
+    expect(out).toBe(prior);
+    expect(tx.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a future-dated payment (would overcharge mora)', async () => {
+    const { service } = setup({ ...futureInstallment });
+    const future = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+    await expect(
+      service.register({ installmentId: 'inst_1', amount: 100, paidAt: future } as never, 'user_1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

@@ -8,7 +8,7 @@ import { api, apiError } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { Paginated, Role, User } from '../lib/types';
 import { dateTime, roleLabel } from '../lib/format';
-import { Column, DataTable } from '../components/DataTable';
+import { Column, DataTable, SortState } from '../components/DataTable';
 import { Badge, EmptyState, ErrorState, LoadingState, Modal, PageHeader, Pagination, Spinner } from '../components/ui';
 
 const ROLES: Role[] = ['ADMIN', 'MANAGER', 'ANALYST', 'OPERATOR', 'AUDITOR'];
@@ -17,12 +17,24 @@ export function UsersPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sort, setSort] = useState<SortState>({ by: 'createdAt', order: 'desc' });
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
 
+  const toggleSort = (key: string) => {
+    setSort((s) => ({ by: key, order: s.by === key && s.order === 'asc' ? 'desc' : 'asc' }));
+    setPage(1);
+  };
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['users', page],
-    queryFn: async () => (await api.get<Paginated<User>>('/users', { params: { page, pageSize: 10 } })).data,
+    queryKey: ['users', page, pageSize, sort.by, sort.order],
+    queryFn: async () =>
+      (
+        await api.get<Paginated<User>>('/users', {
+          params: { page, pageSize, sortBy: sort.by, sortOrder: sort.order },
+        })
+      ).data,
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['users'] });
@@ -38,9 +50,9 @@ export function UsersPage() {
   };
 
   const columns: Column<User>[] = [
-    { key: 'name', header: 'Nome', render: (u) => <span className="font-semibold text-slate-800 dark:text-slate-100">{u.name}</span> },
-    { key: 'email', header: 'E-mail' },
-    { key: 'role', header: 'Perfil', render: (u) => <Badge tone="indigo">{roleLabel[u.role]}</Badge> },
+    { key: 'name', header: 'Nome', sortable: true, render: (u) => <span className="font-semibold text-slate-800 dark:text-slate-100">{u.name}</span> },
+    { key: 'email', header: 'E-mail', sortable: true },
+    { key: 'role', header: 'Perfil', sortable: true, render: (u) => <Badge tone="indigo">{roleLabel[u.role]}</Badge> },
     { key: 'active', header: 'Situação', render: (u) => <Badge tone={u.active ? 'green' : 'gray'}>{u.active ? 'Ativo' : 'Inativo'}</Badge> },
     { key: 'lastLoginAt', header: 'Último acesso', render: (u) => dateTime(u.lastLoginAt) },
     {
@@ -76,8 +88,8 @@ export function UsersPage() {
           <EmptyState title="Nenhum usuário" />
         ) : (
           <>
-            <DataTable columns={columns} data={data.data} />
-            <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} />
+            <DataTable columns={columns} data={data.data} sort={sort} onSort={toggleSort} />
+            <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} pageSize={pageSize} onPageSize={(n) => { setPageSize(n); setPage(1); }} />
           </>
         )}
       </div>
@@ -93,7 +105,7 @@ const createSchema = z.object({
   email: z.string().email('E-mail inválido'),
   password: z
     .string()
-    .min(8, 'Mínimo de 8 caracteres')
+    .min(12, 'Mínimo de 12 caracteres')
     .max(72, 'Máximo de 72 caracteres')
     .regex(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Use maiúsculas, minúsculas e número'),
   role: z.enum(['ADMIN', 'MANAGER', 'ANALYST', 'OPERATOR', 'AUDITOR']),
@@ -138,7 +150,7 @@ function CreateUserModal({ open, onClose, onDone }: { open: boolean; onClose: ()
           <input id="user-email" type="email" className="input" {...register('email')} />
         </Field>
         <Field label="Senha" htmlFor="user-password" error={errors.password?.message}>
-          <input id="user-password" type="password" className="input" placeholder="mín. 8 caracteres, maiúscula, minúscula e número" {...register('password')} />
+          <input id="user-password" type="password" className="input" placeholder="mín. 12 caracteres, maiúscula, minúscula e número" {...register('password')} />
         </Field>
         <Field label="Perfil" htmlFor="user-role" error={errors.role?.message}>
           <select id="user-role" className="input" aria-label="Perfil do usuário" {...register('role')}>

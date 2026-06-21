@@ -28,6 +28,15 @@ export class CreatePaymentDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Idempotency key — a retried submission with the same key is a no-op replay (prevents double charge).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  idempotencyKey?: string;
 }
 
 export class SettleInstallmentDto {
@@ -40,6 +49,12 @@ export class SettleInstallmentDto {
   @IsOptional()
   @IsISO8601()
   paidAt?: string;
+
+  @ApiPropertyOptional({ description: 'Idempotency key (see CreatePaymentDto).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  idempotencyKey?: string;
 }
 
 export class PaymentQueryDto extends PaginationQueryDto {

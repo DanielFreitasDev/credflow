@@ -207,6 +207,15 @@ export function clampCet(value: number): number {
  */
 export const MIN_FIRST_PRINCIPAL_FRACTION = 0.001;
 
+/**
+ * Generous sanity ceiling on total nominal interest relative to financed
+ * principal. Real products never charge 100× the principal in interest; this
+ * only fires on absurd rate×term combinations the per-type amortization guards
+ * can't catch (e.g. a SIMPLE loan at 200%/month for 35 years), so a degenerate
+ * loan can't be persisted.
+ */
+export const MAX_TOTAL_INTEREST_MULTIPLE = 100;
+
 export function isNonAmortizing(schedule: ScheduleEntry[]): boolean {
   if (schedule.length <= 1) return false;
   // Any non-final installment that pays no principal is a balloon.

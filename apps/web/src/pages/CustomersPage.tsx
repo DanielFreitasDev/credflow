@@ -10,7 +10,7 @@ import {
   customerTypeLabel,
   formatDocument,
 } from '../lib/format';
-import { DataTable, Column } from '../components/DataTable';
+import { DataTable, Column, SortState } from '../components/DataTable';
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, StatusBadge } from '../components/ui';
 import { ExportCsvButton } from '../components/ExportCsvButton';
 
@@ -18,6 +18,7 @@ const columns: Column<Customer>[] = [
   {
     key: 'name',
     header: 'Nome / Razão Social',
+    sortable: true,
     render: (c) => (
       <div>
         <p className="font-semibold text-slate-800 dark:text-slate-100">{c.name}</p>
@@ -27,23 +28,38 @@ const columns: Column<Customer>[] = [
   },
   { key: 'document', header: 'Documento', render: (c) => formatDocument(c.document) },
   { key: 'type', header: 'Tipo', render: (c) => customerTypeLabel[c.type] },
-  { key: 'status', header: 'Status', render: (c) => <StatusBadge status={c.status} label={customerStatusLabel[c.status]} /> },
-  { key: 'internalScore', header: 'Score', align: 'right', render: (c) => c.internalScore },
+  { key: 'status', header: 'Status', sortable: true, render: (c) => <StatusBadge status={c.status} label={customerStatusLabel[c.status]} /> },
+  { key: 'internalScore', header: 'Score', align: 'right', sortable: true, render: (c) => c.internalScore },
   { key: 'monthlyIncome', header: 'Renda/Fat.', align: 'right', render: (c) => currency(c.monthlyIncome) },
 ];
 
 export function CustomersPage() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sort, setSort] = useState<SortState>({ by: 'createdAt', order: 'desc' });
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
   const [status, setStatus] = useState('');
 
+  const toggleSort = (key: string) => {
+    setSort((s) => ({ by: key, order: s.by === key && s.order === 'asc' ? 'desc' : 'asc' }));
+    setPage(1);
+  };
+
   const { data, isLoading, error, isFetching } = useQuery({
-    queryKey: ['customers', page, search, type, status],
+    queryKey: ['customers', page, pageSize, sort.by, sort.order, search, type, status],
     queryFn: async () => {
       const { data } = await api.get<Paginated<Customer>>('/customers', {
-        params: { page, pageSize: 10, search: search || undefined, type: type || undefined, status: status || undefined },
+        params: {
+          page,
+          pageSize,
+          sortBy: sort.by,
+          sortOrder: sort.order,
+          search: search || undefined,
+          type: type || undefined,
+          status: status || undefined,
+        },
       });
       return data;
     },
@@ -100,9 +116,9 @@ export function CustomersPage() {
         ) : (
           <>
             <div className={isFetching ? 'opacity-60 transition' : ''}>
-              <DataTable columns={columns} data={data.data} onRowClick={(c) => navigate(`/customers/${c.id}`)} rowLabel={(c) => `Abrir cliente ${c.name}`} />
+              <DataTable columns={columns} data={data.data} onRowClick={(c) => navigate(`/customers/${c.id}`)} rowLabel={(c) => `Abrir cliente ${c.name}`} sort={sort} onSort={toggleSort} />
             </div>
-            <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} />
+            <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} pageSize={pageSize} onPageSize={(n) => { setPageSize(n); setPage(1); }} />
           </>
         )}
       </div>

@@ -40,14 +40,36 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async validateUser(email: string, password: string): Promise<User> {
-    const user = await this.users.findByEmailWithSecret(email);
-    // Always verify against a hash to mitigate user-enumeration timing attacks.
-    const hash = user?.passwordHash ?? '$argon2id$v=19$m=65536,t=3,p=4$invalidsaltinvalid$invalidhashinvalidhashinvalidhashinvalid';
-    const ok = await argon2.verify(hash, password).catch(() => false);
-    if (!user || !ok) throw new UnauthorizedException('Invalid credentials');
-    if (!user.active) throw new UnauthorizedException('User account is disabled');
-    return user;
+  // Account-lockout policy: after MAX_FAILED consecutive failed logins the
+  // account is locked for LOCK_MINUTES; a successful login resets the counter.
+  private static readonly MAX_FAILED = 5;
+  private static readonly LOCK_MINUTES = 15;
+  // Verifying against a real-shaped dummy hash keeps login timing flat for
+  // non-existent users (anti user-enumeration).
+  private static readonly DUMMY_HASH =
+    '$argon2id$v=19$m=65536,t=3,p=4$invalidsaltinvalid$invalidhashinvalidhashinvalidhashinvalid';
+
+  /** Increments the failed-login counter and locks the account at the threshold. */
+  private async registerFailedAttempt(user: User, meta: RequestMeta): Promise<void> {
+    const next = user.failedLoginCount + 1;
+    const lock = next >= AuthService.MAX_FAILED;
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginCount: lock ? 0 : next,
+        lockedUntil: lock ? new Date(Date.now() + AuthService.LOCK_MINUTES * 60_000) : undefined,
+      },
+    });
+    if (lock) {
+      await this.audit.record({
+        userId: user.id,
+        action: 'ACCOUNT_LOCKED',
+        entity: 'User',
+        entityId: user.id,
+        after: { lockedMinutes: AuthService.LOCK_MINUTES },
+        ip: meta.ip,
+      });
+    }
   }
 
   private async issueTokens(user: User, meta: RequestMeta): Promise<TokenPair> {
@@ -61,6 +83,7 @@ export class AuthService {
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.getOrThrow('jwt.accessSecret'),
       expiresIn: this.config.getOrThrow('jwt.accessTtl'),
+      algorithm: 'HS256',
     });
 
     const jti = randomUUID();
@@ -69,6 +92,7 @@ export class AuthService {
       {
         secret: this.config.getOrThrow('jwt.refreshSecret'),
         expiresIn: this.config.getOrThrow('jwt.refreshTtl'),
+        algorithm: 'HS256',
       },
     );
 
@@ -87,19 +111,42 @@ export class AuthService {
   }
 
   async login(email: string, password: string, meta: RequestMeta): Promise<LoginResult> {
-    let user: User;
-    try {
-      user = await this.validateUser(email, password);
-    } catch (err) {
-      // Record failed attempts for detection/monitoring (best-effort, never throws).
+    const user = await this.users.findByEmailWithSecret(email);
+
+    // Reject while locked. The dummy-hash verify below keeps timing flat for
+    // non-existent users, so this adds no enumeration oracle beyond what a
+    // lockout inherently implies.
+    if (user?.lockedUntil && user.lockedUntil > new Date()) {
       await this.audit.record({
-        action: 'LOGIN_FAILED',
+        userId: user.id,
+        action: 'LOGIN_BLOCKED',
         entity: 'User',
-        after: { email },
+        entityId: user.id,
         ip: meta.ip,
       });
-      throw err;
+      throw new UnauthorizedException(
+        'Account temporarily locked due to repeated failed logins. Try again later.',
+      );
     }
+
+    const hash = user?.passwordHash ?? AuthService.DUMMY_HASH;
+    const ok = await argon2.verify(hash, password).catch(() => false);
+
+    if (!user || !ok) {
+      if (user) await this.registerFailedAttempt(user, meta);
+      await this.audit.record({ action: 'LOGIN_FAILED', entity: 'User', after: { email }, ip: meta.ip });
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (!user.active) throw new UnauthorizedException('User account is disabled');
+
+    // Successful login clears any failed-attempt / lock state.
+    if (user.failedLoginCount > 0 || user.lockedUntil) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginCount: 0, lockedUntil: null },
+      });
+    }
+
     const tokens = await this.issueTokens(user, meta);
     await this.users.touchLastLogin(user.id);
     await this.audit.record({
@@ -120,6 +167,7 @@ export class AuthService {
     try {
       payload = await this.jwt.verifyAsync(refreshToken, {
         secret: this.config.getOrThrow('jwt.refreshSecret'),
+        algorithms: ['HS256'],
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');

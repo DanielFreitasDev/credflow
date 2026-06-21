@@ -292,15 +292,36 @@ export function Pagination({
   totalPages,
   total,
   onPage,
+  pageSize,
+  onPageSize,
 }: {
   page: number;
   totalPages: number;
   total: number;
   onPage: (p: number) => void;
+  /** When provided with `onPageSize`, renders a page-size selector. */
+  pageSize?: number;
+  onPageSize?: (n: number) => void;
 }) {
   return (
     <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-      <span>{total} registro(s)</span>
+      <div className="flex items-center gap-3">
+        <span>{total} registro(s)</span>
+        {pageSize != null && onPageSize && (
+          <select
+            className="input h-8 w-auto py-0 text-xs"
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+            aria-label="Itens por página"
+          >
+            {[10, 20, 50].map((n) => (
+              <option key={n} value={n}>
+                {n} / página
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <button
           className="btn-secondary px-3 py-1"

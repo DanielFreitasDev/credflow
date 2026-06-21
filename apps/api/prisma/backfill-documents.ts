@@ -1,17 +1,24 @@
 /* eslint-disable no-console */
 /**
- * One-off backfill for the `protect_customer_document` migration.
+ * Idempotent backfill / re-indexer for customer documents.
  *
- * Existing customers created before the change hold their CPF/CNPJ as plaintext
- * in `Customer.document` with a NULL `documentHash`. This encrypts that value at
- * rest and populates the blind index + last4. It is idempotent: only rows with a
- * NULL `documentHash` are processed, so re-running is a no-op.
+ * Ensures every customer's CPF/CNPJ is stored as ciphertext (AES-256-GCM) with a
+ * matching HMAC blind index (`documentHash`) and `documentLast4`. It safely:
+ *   - encrypts legacy plaintext rows (the original `protect_customer_document` case);
+ *   - re-indexes rows after a blind-index key/scheme change (HMAC migration);
+ *   - is a no-op for rows already in the correct shape (safe to run on every boot).
  *
- *   ENCRYPTION_KEY=... npx tsx prisma/backfill-documents.ts
+ *   ENCRYPTION_KEY=... [BLIND_INDEX_KEY=...] npx tsx prisma/backfill-documents.ts
  */
 import { PrismaClient } from '@prisma/client';
 import { onlyDigits } from '../src/common/utils/document.util';
-import { blindIndexWithKey, encryptWithKey, last4 } from '../src/common/crypto/pii.util';
+import {
+  blindIndexWithKey,
+  deriveBlindIndexKey,
+  encryptWithKey,
+  last4,
+  safeDecryptWithKey,
+} from '../src/common/crypto/pii.util';
 
 const prisma = new PrismaClient();
 const KEY = Buffer.from(process.env.ENCRYPTION_KEY ?? '', 'base64');
@@ -20,29 +27,38 @@ async function main() {
   if (KEY.length !== 32) {
     throw new Error('ENCRYPTION_KEY must decode to 32 bytes (base64).');
   }
+  const BLIND_KEY = process.env.BLIND_INDEX_KEY
+    ? Buffer.from(process.env.BLIND_INDEX_KEY, 'base64')
+    : deriveBlindIndexKey(KEY);
 
   const rows = await prisma.customer.findMany({
-    where: { documentHash: null },
-    select: { id: true, document: true },
+    select: { id: true, document: true, documentHash: true },
   });
-  console.log(`Backfilling ${rows.length} customer document(s)...`);
+  console.log(`Checking ${rows.length} customer document(s)...`);
 
   let updated = 0;
   for (const row of rows) {
-    const digits = onlyDigits(row.document);
+    // safeDecrypt yields the digits whether the stored value is ciphertext or
+    // legacy plaintext; `wasCiphertext` tells the two apart for the skip check.
+    const plain = safeDecryptWithKey(KEY, row.document);
+    const digits = onlyDigits(plain ?? '');
     if (!digits) continue;
+    const wasCiphertext = plain !== row.document;
+    const expectedHash = blindIndexWithKey(BLIND_KEY, digits);
+    if (wasCiphertext && row.documentHash === expectedHash) continue; // already current
+
     await prisma.customer.update({
       where: { id: row.id },
       data: {
         document: encryptWithKey(KEY, digits),
-        documentHash: blindIndexWithKey(KEY, digits),
+        documentHash: expectedHash,
         documentLast4: last4(digits),
       },
     });
     updated++;
   }
 
-  console.log(`✅ Backfill complete: ${updated} updated.`);
+  console.log(`✅ Backfill/reindex complete: ${updated} updated, ${rows.length - updated} already current.`);
   await prisma.$disconnect();
 }
 

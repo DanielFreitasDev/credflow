@@ -22,9 +22,9 @@ export class CreateUserDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: 'Str0ng@Pass', minLength: 8 })
+  @ApiProperty({ example: 'Str0ngP@ssword1', minLength: 12 })
   @IsString()
-  @MinLength(8)
+  @MinLength(12) // aligned with the self-service change-password policy
   @MaxLength(72) // argon2/bcrypt safe bound
   @Matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
     message: 'password must contain upper, lower case letters and a number',

@@ -7,8 +7,8 @@ import { AmortizationType, Prisma, ProposalStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common/utils/pagination.util';
-import { buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
-import { clampCet, computeCet, isNonAmortizing, simulate } from '../../domain/finance/finance';
+import { acquireNumberLock, buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
+import { clampCet, computeCet, isNonAmortizing, MAX_TOTAL_INTEREST_MULTIPLE, simulate } from '../../domain/finance/finance';
 import { estimateIofCents } from '../../domain/finance/fees';
 import { centsToDecimal, centsToReais, reaisToCents } from '../../domain/finance/money';
 import { EncryptionService } from '../../common/crypto/encryption.service';
@@ -54,10 +54,22 @@ export class ProposalsService {
       amortization: dto.amortizationType as AmortizationType,
     });
 
-    if (dto.amortizationType === 'PRICE' && isNonAmortizing(sim.schedule)) {
+    // Fees (TAC + IOF) must not equal or exceed the requested cash; otherwise the
+    // customer finances more charges than money actually received.
+    if (iofCents + tacCents >= requestedCents) {
+      throw new BadRequestException(
+        'Os encargos (TAC + IOF) não podem ser maiores ou iguais ao valor solicitado.',
+      );
+    }
+    // Balloon / non-amortizing guard for EVERY amortization type (not only PRICE).
+    if (isNonAmortizing(sim.schedule)) {
       throw new BadRequestException(
         'A taxa é alta demais para o prazo: as parcelas não amortizam o principal. Reduza a taxa ou aumente o prazo.',
       );
+    }
+    // Sanity ceiling on absurd total cost the per-type guard can't catch.
+    if (sim.totalInterestCents > financedCents * MAX_TOTAL_INTEREST_MULTIPLE) {
+      throw new BadRequestException('O custo total de juros é irreal para os parâmetros informados.');
     }
 
     const cet = computeCet(requestedCents, sim.schedule.map((s) => s.amount));
@@ -115,13 +127,15 @@ export class ProposalsService {
     const c = this.compute(dto);
     const year = new Date().getFullYear();
 
-    const proposal = await retryOnUniqueViolation(async () => {
-      const count = await this.prisma.creditProposal.count({
-        where: { number: { startsWith: `PRO-${year}-` } },
-      });
-      const number = buildSequentialNumber('PRO', year, count + 1);
+    const proposal = await retryOnUniqueViolation(() =>
+      this.prisma.$transaction(async (tx) => {
+        await acquireNumberLock(tx, 'PRO', year);
+        const count = await tx.creditProposal.count({
+          where: { number: { startsWith: `PRO-${year}-` } },
+        });
+        const number = buildSequentialNumber('PRO', year, count + 1);
 
-      return this.prisma.creditProposal.create({
+        return tx.creditProposal.create({
         data: {
           number,
           customerId: dto.customerId,
@@ -144,8 +158,9 @@ export class ProposalsService {
             create: { toStatus: ProposalStatus.DRAFT, changedById: actorId },
           },
         },
-      });
-    });
+        });
+      }),
+    );
 
     await this.audit.record({
       userId: actorId,
@@ -265,14 +280,14 @@ export class ProposalsService {
       );
     }
 
-    const isDecision = (['APPROVED', 'REJECTED', 'CONTRACTED', 'CANCELLED'] as ProposalStatus[]).includes(
-      toStatus,
-    );
+    // `decidedAt` records the credit-decision moment (APPROVED/REJECTED) and must
+    // be preserved when the proposal later moves to CONTRACTED/CANCELLED.
+    const isCreditDecision = (['APPROVED', 'REJECTED'] as ProposalStatus[]).includes(toStatus);
     const updated = await client.creditProposal.update({
       where: { id },
       data: {
         status: toStatus,
-        decidedAt: isDecision ? new Date() : proposal.decidedAt,
+        decidedAt: isCreditDecision ? new Date() : proposal.decidedAt,
         events: { create: { fromStatus: proposal.status, toStatus, reason, changedById: actorId } },
       },
     });

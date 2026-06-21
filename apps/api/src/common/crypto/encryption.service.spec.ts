@@ -13,6 +13,7 @@ describe('EncryptionService.decryptDocumentField', () => {
   const key = Buffer.alloc(32, 7).toString('base64');
   const service = new EncryptionService({
     getOrThrow: () => key,
+    get: () => undefined, // no explicit BLIND_INDEX_KEY -> derive from the AES key
   } as unknown as ConfigService);
 
   it('strips the internal documentHash blind index', () => {
@@ -57,6 +58,7 @@ describe('EncryptionService.presentDocumentField (role-aware masking)', () => {
   const key = Buffer.alloc(32, 7).toString('base64');
   const service = new EncryptionService({
     getOrThrow: () => key,
+    get: () => undefined, // no explicit BLIND_INDEX_KEY -> derive from the AES key
   } as unknown as ConfigService);
 
   it('masks all but the last 4 digits for AUDITOR (encrypted source)', () => {

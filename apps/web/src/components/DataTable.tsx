@@ -7,6 +7,13 @@ export interface Column<T> {
   render?: (row: T) => ReactNode;
   className?: string;
   align?: 'left' | 'right' | 'center';
+  /** When true (and the table gets `onSort`), the header becomes a sort toggle. */
+  sortable?: boolean;
+}
+
+export interface SortState {
+  by: string;
+  order: 'asc' | 'desc';
 }
 
 export function DataTable<T extends { id: string }>({
@@ -14,30 +21,61 @@ export function DataTable<T extends { id: string }>({
   data,
   onRowClick,
   rowLabel,
+  sort,
+  onSort,
 }: {
   columns: Column<T>[];
   data: T[];
   onRowClick?: (row: T) => void;
   /** Optional accessible label for each clickable row (e.g. "Abrir cliente João"). */
   rowLabel?: (row: T) => string;
+  /** Current sort state — drives the active-column indicator. */
+  sort?: SortState;
+  /** Called with the column key when a sortable header is activated. */
+  onSort?: (key: string) => void;
 }) {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-slate-100 text-sm dark:divide-slate-800">
         <thead>
           <tr className="bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
-            {columns.map((c) => (
-              <th
-                key={c.key}
-                className={clsx(
-                  'px-4 py-3',
-                  c.align === 'right' && 'text-right',
-                  c.align === 'center' && 'text-center',
-                )}
-              >
-                {c.header}
-              </th>
-            ))}
+            {columns.map((c) => {
+              const sortable = !!c.sortable && !!onSort;
+              const active = sort?.by === c.key;
+              return (
+                <th
+                  key={c.key}
+                  aria-sort={
+                    active ? (sort!.order === 'asc' ? 'ascending' : 'descending') : undefined
+                  }
+                  className={clsx(
+                    'px-4 py-3',
+                    c.align === 'right' && 'text-right',
+                    c.align === 'center' && 'text-center',
+                  )}
+                >
+                  {sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => onSort!(c.key)}
+                      className={clsx(
+                        'inline-flex items-center gap-1 font-semibold uppercase tracking-wide transition hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 dark:hover:text-slate-200',
+                        c.align === 'right' && 'flex-row-reverse',
+                        active && 'text-slate-700 dark:text-slate-200',
+                      )}
+                      aria-label={`Ordenar por ${c.header}`}
+                    >
+                      {c.header}
+                      <span aria-hidden className="text-[10px] leading-none">
+                        {active ? (sort!.order === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </button>
+                  ) : (
+                    c.header
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-slate-800/70">

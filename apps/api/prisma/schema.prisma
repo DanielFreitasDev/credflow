@@ -144,6 +144,10 @@ model User {
   role         Role      @default(OPERATOR)
   active       Boolean   @default(true)
   lastLoginAt  DateTime?
+  // Brute-force protection: consecutive failed logins lock the account until
+  // `lockedUntil`. Reset to 0 on a successful login. Enforced in auth.service.
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -218,6 +222,7 @@ model Customer {
   @@index([status])
   @@index([type])
   @@index([name])
+  @@index([internalScore]) // dashboard risk-band counts + score ordering
   // Trigram GIN indexes accelerate case-insensitive substring search
   // (ILIKE '%term%') used by the customer list filter. Needs the pg_trgm
   // extension (declared on the datasource).
@@ -410,13 +415,17 @@ model Installment {
   payments Payment[]
 
   @@unique([contractId, number])
-  @@index([status])
+  // The composite [status, dueDate] serves status-only lookups as a left prefix,
+  // so a standalone [status] index would be redundant write overhead.
   @@index([dueDate])
   @@index([status, dueDate])
 }
 
 model Payment {
   id                  String        @id @default(cuid())
+  // Optional client-supplied idempotency key. A unique index makes a retried /
+  // double-clicked payment submission a no-op replay instead of a double charge.
+  idempotencyKey      String?       @unique
   contractId          String
   installmentId       String
   amount              Decimal       @db.Decimal(14, 2)
@@ -462,6 +471,7 @@ model CollectionCase {
   promises     PaymentPromise[]
 
   @@index([status])
+  @@index([daysOverdue]) // default ORDER BY of the collections list + dunning cron filter
 }
 
 model CollectionInteraction {

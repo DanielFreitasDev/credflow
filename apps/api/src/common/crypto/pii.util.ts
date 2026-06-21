@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from 'crypto';
 
 /**
  * Framework-free PII crypto primitives, parameterised by a 32-byte key. Shared
@@ -26,9 +26,36 @@ export function decryptWithKey(key: Buffer, payload: string): string {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 }
 
-/** Deterministic blind index for uniqueness/equality search without storing plaintext. */
+/**
+ * Deterministic blind index for uniqueness/equality search without storing
+ * plaintext. Uses **HMAC-SHA256** (keyed) rather than a secret-prefix
+ * `SHA-256(key‖value)`: a leaked index column is not brute-forceable without the
+ * key, and `key` here is the domain-separated blind-index key (see
+ * `deriveBlindIndexKey`), never the raw AES key — so the two cryptographic
+ * purposes don't share key material.
+ */
 export function blindIndexWithKey(key: Buffer, value: string): string {
-  return createHash('sha256').update(key).update(value.toLowerCase().trim()).digest('hex');
+  return createHmac('sha256', key).update(value.toLowerCase().trim()).digest('hex');
+}
+
+/**
+ * Derives a dedicated 32-byte blind-index key from the master AES key via
+ * HKDF-SHA256, providing cryptographic domain separation without requiring the
+ * operator to manage a second secret. If `BLIND_INDEX_KEY` is configured
+ * explicitly, that is used instead (see EncryptionService).
+ */
+export function deriveBlindIndexKey(masterKey: Buffer): Buffer {
+  return Buffer.from(hkdfSync('sha256', masterKey, Buffer.alloc(0), 'credflow-blind-index-v1', 32));
+}
+
+/** Decrypts, tolerating legacy plaintext (returns the original on failure). */
+export function safeDecryptWithKey(key: Buffer, value: string | null | undefined): string | null {
+  if (value == null) return null;
+  try {
+    return decryptWithKey(key, value);
+  } catch {
+    return value;
+  }
 }
 
 /** Last 4 digits, for masked display / audit trails. */
