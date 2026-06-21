@@ -21,6 +21,7 @@ import { useTheme } from '../lib/theme';
 import { roleLabel } from '../lib/format';
 import { Role } from '../lib/types';
 import { Badge } from './ui';
+import { Logo } from './Logo';
 
 interface NavItem {
   to: string;
@@ -62,11 +63,15 @@ export function Layout() {
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex h-16 items-center gap-2 border-b border-slate-100 px-6 dark:border-slate-800">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white font-bold">
-            C
-          </div>
-          <span className="text-lg font-bold text-slate-900 dark:text-slate-50">CredFlow</span>
+        <div className="flex h-16 items-center border-b border-slate-100 px-6 dark:border-slate-800">
+          <NavLink
+            to="/"
+            onClick={() => setOpen(false)}
+            aria-label="CredFlow — ir para o dashboard"
+            className="inline-flex items-center"
+          >
+            <Logo size="sm" />
+          </NavLink>
         </div>
         <nav className="flex flex-col gap-1 p-3">
           {items.map((item) => {

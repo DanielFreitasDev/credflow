@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { apiError } from '../lib/api';
 import { Spinner } from '../components/ui';
+import { Logo } from '../components/Logo';
 
 export function LoginPage() {
   const { login, user } = useAuth();
@@ -29,14 +30,11 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-600 to-brand-800 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#102A56] to-[#071427] p-4">
       <div className="w-full max-w-md">
-        <div className="mb-8 text-center text-white">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-2xl font-bold backdrop-blur">
-            C
-          </div>
-          <h1 className="text-3xl font-bold">CredFlow</h1>
-          <p className="mt-1 text-brand-100">Plataforma de Gestão de Crédito e Empréstimos</p>
+        <div className="mb-8 text-center">
+          <Logo size="lg" onDark />
+          <p className="mt-3 text-sm text-brand-100">Plataforma de Gestão de Crédito e Empréstimos</p>
         </div>
 
         <form onSubmit={handleSubmit} className="card space-y-4 p-8">

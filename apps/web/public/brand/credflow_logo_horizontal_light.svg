@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+<svg width="720" height="160" viewBox="0 0 720 160" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">CredFlow Logo</title>
   <desc id="desc">Marca vetorial abstrata para plataforma SaaS fintech de crédito, empréstimos e financiamentos.</desc>
   
@@ -27,13 +27,19 @@
   
   
   
-<g transform="translate(8 8) scale(0.875)">
+<g filter="url(#cf-soft-shadow)" transform="translate(24 16) scale(0.98)">
+  
 <g id="credflow-symbol" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <path d="M33.5 67.8C33.5 45.9 50.4 29.1 72.1 28.1C93.4 27.2 108.4 40.2 108.4 58.7C108.4 82.2 89.2 100.9 64.6 100.9C47.2 100.9 33.5 91.5 27.7 78.1" stroke="url(#cf-main)" stroke-width="13.4"/>
   <path d="M47.9 74.8C56.4 62.4 68.9 57.8 83.4 61.2C90.3 62.9 95.5 66.7 99.6 72.2" stroke="url(#cf-accent)" stroke-width="10.6"/>
   <path d="M50.9 51.1C60.2 44.8 70.7 42.8 82.3 45.5C88.7 47 93.8 50.4 97.3 55.1" stroke="url(#cf-main)" stroke-width="8.2" opacity="0.92"/>
   <circle cx="27.7" cy="78.1" r="4.8" fill="#16C7E6" stroke="none"/>
   <circle cx="99.6" cy="72.2" r="4.3" fill="#30D17A" stroke="none"/>
-</g></g>
+</g>
+</g>
+<text x="158" y="92" font-family="Inter, Manrope, Avenir Next, Segoe UI, Arial, sans-serif" font-size="54" font-weight="760" letter-spacing="-2.2">
+  <tspan fill="#102A56">Cred</tspan><tspan fill="url(#cf-word)">Flow</tspan>
+</text>
+<text x="160" y="119" font-family="Inter, Manrope, Avenir Next, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="520" letter-spacing="2.1" fill="#5F6D82" opacity="0.86">CREDIT OPERATIONS PLATFORM</text>
 
 </svg>

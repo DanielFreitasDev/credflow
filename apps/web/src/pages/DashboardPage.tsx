@@ -68,7 +68,7 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-2">
-        <KpiCard icon={<FileSignature className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />} tone="bg-indigo-50 dark:bg-indigo-500/15" label="Contratos ativos" value={number(kpis.activeContracts)} />
+        <KpiCard icon={<FileSignature className="h-6 w-6 text-brand-600 dark:text-brand-400" />} tone="bg-brand-50 dark:bg-brand-500/15" label="Contratos ativos" value={number(kpis.activeContracts)} />
         <KpiCard icon={<FileSignature className="h-6 w-6 text-slate-600 dark:text-slate-300" />} tone="bg-slate-100 dark:bg-slate-800" label="Propostas pendentes" value={number(kpis.proposalsPending)} />
       </div>
 
@@ -81,12 +81,12 @@ export function DashboardPage() {
               <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
               <Tooltip
                 formatter={(v: number) => currency(v)}
-                cursor={{ fill: isDark ? 'rgba(99,102,241,0.18)' : '#eef2ff' }}
+                cursor={{ fill: isDark ? 'rgba(37,94,235,0.18)' : '#eff6ff' }}
                 contentStyle={tooltipStyle}
                 labelStyle={{ color: isDark ? '#f1f5f9' : '#0f172a' }}
                 itemStyle={tooltipItemStyle}
               />
-              <Bar dataKey="amount" fill="#4f46e5" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="amount" fill="#255eeb" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
