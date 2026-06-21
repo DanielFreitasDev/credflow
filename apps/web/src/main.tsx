@@ -3,9 +3,9 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
-import { AuthProvider } from './lib/auth';
-import { ToastProvider } from './lib/toast';
-import { ThemeProvider } from './lib/theme';
+import { AuthProvider } from './lib/auth-provider';
+import { ToastProvider } from './lib/toast-provider';
+import { ThemeProvider } from './lib/theme-provider';
 import './index.css';
 
 const queryClient = new QueryClient({

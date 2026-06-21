@@ -12,6 +12,9 @@ const iso = (d: Date | null | undefined): string => (d ? new Date(d).toISOString
 // loading an entire table into memory; truncation is flagged in the audit log
 // (no silent caps) so a clipped export is always visible.
 const EXPORT_ROW_CAP = 50000;
+// Fetch one row past the cap so a full result set can be told apart from a
+// truncated one: `capped` is only true when that extra overflow row comes back.
+const EXPORT_FETCH_LIMIT = EXPORT_ROW_CAP + 1;
 
 /**
  * CSV exports for the main domains. Documents are exported masked (last 4),
@@ -41,20 +44,24 @@ export class ReportsService {
     columns: CsvColumn<T>[],
     filter?: ReportQueryDto,
   ): Promise<string> {
+    // Rows were fetched up to EXPORT_FETCH_LIMIT (cap + 1); a row beyond the cap
+    // means the export was actually truncated. Drop the sentinel before emitting.
+    const capped = rows.length > EXPORT_ROW_CAP;
+    const exported = capped ? rows.slice(0, EXPORT_ROW_CAP) : rows;
     await this.audit.record({
       userId: actorId,
       action: 'EXPORT',
       entity: 'Report',
       entityId: name,
       after: {
-        rows: rows.length,
+        rows: exported.length,
         format: 'csv',
-        capped: rows.length >= EXPORT_ROW_CAP,
+        capped,
         ...(filter?.from ? { from: filter.from } : {}),
         ...(filter?.to ? { to: filter.to } : {}),
       },
     });
-    return toCsv(columns, rows);
+    return toCsv(columns, exported);
   }
 
   async customers(actorId?: string, query?: ReportQueryDto): Promise<string> {
@@ -62,7 +69,7 @@ export class ReportsService {
     const rows = await this.prisma.customer.findMany({
       where: createdAt ? { createdAt } : undefined,
       orderBy: { createdAt: 'desc' },
-      take: EXPORT_ROW_CAP,
+      take: EXPORT_FETCH_LIMIT,
       select: {
         name: true,
         type: true,
@@ -93,7 +100,7 @@ export class ReportsService {
     const rows = await this.prisma.creditProposal.findMany({
       where: createdAt ? { createdAt } : undefined,
       orderBy: { createdAt: 'desc' },
-      take: EXPORT_ROW_CAP,
+      take: EXPORT_FETCH_LIMIT,
       select: {
         number: true,
         status: true,
@@ -126,7 +133,7 @@ export class ReportsService {
     const rows = await this.prisma.contract.findMany({
       where: createdAt ? { createdAt } : undefined,
       orderBy: { createdAt: 'desc' },
-      take: EXPORT_ROW_CAP,
+      take: EXPORT_FETCH_LIMIT,
       select: {
         number: true,
         status: true,
@@ -159,7 +166,7 @@ export class ReportsService {
     const rows = await this.prisma.payment.findMany({
       where: paidAt ? { paidAt } : undefined,
       orderBy: { paidAt: 'desc' },
-      take: EXPORT_ROW_CAP,
+      take: EXPORT_FETCH_LIMIT,
       select: {
         amount: true,
         method: true,
@@ -190,7 +197,7 @@ export class ReportsService {
     const rows = await this.prisma.collectionCase.findMany({
       where: openedAt ? { openedAt } : undefined,
       orderBy: { daysOverdue: 'desc' },
-      take: EXPORT_ROW_CAP,
+      take: EXPORT_FETCH_LIMIT,
       select: {
         status: true,
         daysOverdue: true,
@@ -216,7 +223,7 @@ export class ReportsService {
     const rows = await this.prisma.auditLog.findMany({
       where: createdAt ? { createdAt } : undefined,
       orderBy: { createdAt: 'desc' },
-      take: EXPORT_ROW_CAP,
+      take: EXPORT_FETCH_LIMIT,
       select: { createdAt: true, userId: true, action: true, entity: true, entityId: true },
     });
     return this.audited('audit', actorId, rows, [

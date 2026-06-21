@@ -27,17 +27,14 @@ export class CustomersService {
   private decryptCustomer<
     T extends { document?: string | null; documents?: { number: string | null }[] },
   >(customer: T): T {
-    if (customer.document != null) {
-      customer.document = this.encryption.safeDecrypt(customer.document) as string;
-    }
+    // Decrypt the primary document and strip the internal blind index via the
+    // single shared helper, so there is one definition of a "safe" customer.
+    this.encryption.decryptDocumentField(customer);
     if (customer.documents) {
       for (const doc of customer.documents) {
         if (doc.number) doc.number = this.encryption.safeDecrypt(doc.number);
       }
     }
-    // The blind index is an internal, key-bound correlator used only for exact
-    // lookup/uniqueness — never expose it in API responses.
-    delete (customer as { documentHash?: unknown }).documentHash;
     return customer;
   }
 

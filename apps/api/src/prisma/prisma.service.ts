@@ -8,6 +8,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   constructor() {
     super({
       log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+      // `Customer.documentHash` is an internal, key-bound blind index used only
+      // for exact lookup/uniqueness (via `where`) — it must never leave the DB
+      // layer. Omitting it globally guarantees no query, including nested
+      // `customer` includes, can leak it into an API response.
+      omit: { customer: { documentHash: true } },
     });
   }
 

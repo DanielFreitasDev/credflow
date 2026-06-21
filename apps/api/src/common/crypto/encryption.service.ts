@@ -39,11 +39,18 @@ export class EncryptionService {
   }
 
   /**
-   * Decrypts an embedded record's `document` field in place (tolerating legacy
-   * plaintext), so modules that embed a customer don't leak ciphertext.
+   * Prepares an embedded customer for an API response in place: decrypts the
+   * `document` field (tolerating legacy plaintext) and strips the internal
+   * `documentHash` blind index, so modules that embed a customer leak neither
+   * ciphertext nor the key-bound correlator. Defense in depth on top of the
+   * global Prisma `omit` for `documentHash`.
    */
-  decryptDocumentField(obj: { document?: string | null } | null | undefined): void {
-    if (obj && obj.document != null) obj.document = this.safeDecrypt(obj.document) ?? obj.document;
+  decryptDocumentField(
+    obj: { document?: string | null; documentHash?: unknown } | null | undefined,
+  ): void {
+    if (!obj) return;
+    if (obj.document != null) obj.document = this.safeDecrypt(obj.document) ?? obj.document;
+    delete obj.documentHash;
   }
 
   /** Deterministic, non-reversible hash — useful for blind-indexing/lookups. */

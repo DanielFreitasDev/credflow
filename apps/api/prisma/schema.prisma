@@ -2,6 +2,10 @@
 // Money is stored as Decimal(14,2); rates as Decimal(9,6) (fraction, e.g. 0.025000 = 2.5%/month).
 generator client {
   provider = "prisma-client-js"
+  // Enables the client-level `omit` config (PrismaService) so the internal
+  // `Customer.documentHash` blind index never leaves the DB layer. GA in
+  // Prisma 6 — drop this flag on upgrade.
+  previewFeatures = ["omitApi"]
 }
 
 datasource db {
