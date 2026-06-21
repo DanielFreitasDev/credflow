@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/brand/credflow_logo_horizontal_dark_transparent.svg">
-  <img alt="CredFlow — Plataforma de Gestão de Crédito e Empréstimos" src="apps/web/public/brand/credflow_logo_horizontal_light.svg" width="440">
+  <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/brand/credflow_lockup_dark.svg">
+  <img alt="CredFlow" src="apps/web/public/brand/credflow_lockup_light.svg" width="340">
 </picture>
 
 **Plataforma de Gestão de Crédito e Empréstimos**
