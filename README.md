@@ -172,10 +172,17 @@ cd apps/api
 cp ../../.env.example .env          # ajuste DATABASE_URL e os segredos
 npm install
 npx prisma generate
-npx prisma migrate deploy           # aplica a migration inicial
+npx prisma migrate deploy           # aplica as migrations
+npm run db:backfill-documents       # cifra/indexa documentos legados (idempotente)
 npm run db:seed                     # popula dados de demonstração
 npm run start:dev                   # API em http://localhost:3333/api
 ```
+
+> **Backfill de documentos:** num banco **já existente**, após aplicar a migration
+> `protect_customer_document`, rode `npm run db:backfill-documents` **antes** do seed.
+> Ele cifra o CPF/CNPJ legado e popula o `documentHash`/`documentLast4`. O seed faz
+> upsert por `documentHash`, então pular este passo pode gerar duplicidade. Em banco
+> novo é um no-op. No Docker o `docker-entrypoint.sh` já executa isso automaticamente.
 
 ### 3. Frontend
 ```bash

@@ -35,6 +35,9 @@ export class CustomersService {
         if (doc.number) doc.number = this.encryption.safeDecrypt(doc.number);
       }
     }
+    // The blind index is an internal, key-bound correlator used only for exact
+    // lookup/uniqueness — never expose it in API responses.
+    delete (customer as { documentHash?: unknown }).documentHash;
     return customer;
   }
 

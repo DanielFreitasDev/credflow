@@ -1,15 +1,22 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { CsvColumn, toCsv } from './csv.util';
+import { ReportQueryDto } from './dto/report-query.dto';
 
 const num = (v: unknown): number => (v == null ? 0 : Number(v));
 const iso = (d: Date | null | undefined): string => (d ? new Date(d).toISOString() : '');
-const AUDIT_EXPORT_CAP = 10000;
+
+// Hard ceiling on rows materialized per export. Keeps a single request from
+// loading an entire table into memory; truncation is flagged in the audit log
+// (no silent caps) so a clipped export is always visible.
+const EXPORT_ROW_CAP = 50000;
 
 /**
- * CSV exports for the main domains. Documents are exported masked (last 4) and
- * every export is recorded in the audit trail (actor + row count).
+ * CSV exports for the main domains. Documents are exported masked (last 4),
+ * every export is capped and recorded in the audit trail (actor, row count,
+ * whether it was truncated, and the date filter used).
  */
 @Injectable()
 export class ReportsService {
@@ -18,26 +25,44 @@ export class ReportsService {
     private readonly audit: AuditService,
   ) {}
 
+  /** Build an inclusive `gte`/`lte` filter from the query, or undefined if unset. */
+  private range(q?: ReportQueryDto): Prisma.DateTimeFilter | undefined {
+    if (!q?.from && !q?.to) return undefined;
+    return {
+      ...(q.from ? { gte: new Date(q.from) } : {}),
+      ...(q.to ? { lte: new Date(q.to) } : {}),
+    };
+  }
+
   private async audited<T>(
     name: string,
     actorId: string | undefined,
     rows: T[],
     columns: CsvColumn<T>[],
-    extra?: Record<string, unknown>,
+    filter?: ReportQueryDto,
   ): Promise<string> {
     await this.audit.record({
       userId: actorId,
       action: 'EXPORT',
       entity: 'Report',
       entityId: name,
-      after: { rows: rows.length, format: 'csv', ...extra },
+      after: {
+        rows: rows.length,
+        format: 'csv',
+        capped: rows.length >= EXPORT_ROW_CAP,
+        ...(filter?.from ? { from: filter.from } : {}),
+        ...(filter?.to ? { to: filter.to } : {}),
+      },
     });
     return toCsv(columns, rows);
   }
 
-  async customers(actorId?: string): Promise<string> {
+  async customers(actorId?: string, query?: ReportQueryDto): Promise<string> {
+    const createdAt = this.range(query);
     const rows = await this.prisma.customer.findMany({
+      where: createdAt ? { createdAt } : undefined,
       orderBy: { createdAt: 'desc' },
+      take: EXPORT_ROW_CAP,
       select: {
         name: true,
         type: true,
@@ -60,12 +85,15 @@ export class ReportsService {
       { header: 'Renda/Faturamento', value: (r) => num(r.monthlyIncome) },
       { header: 'Score', value: (r) => r.internalScore },
       { header: 'Criado em', value: (r) => iso(r.createdAt) },
-    ]);
+    ], query);
   }
 
-  async proposals(actorId?: string): Promise<string> {
+  async proposals(actorId?: string, query?: ReportQueryDto): Promise<string> {
+    const createdAt = this.range(query);
     const rows = await this.prisma.creditProposal.findMany({
+      where: createdAt ? { createdAt } : undefined,
       orderBy: { createdAt: 'desc' },
+      take: EXPORT_ROW_CAP,
       select: {
         number: true,
         status: true,
@@ -90,12 +118,15 @@ export class ReportsService {
       { header: 'Parcela', value: (r) => num(r.installmentAmount) },
       { header: 'CET anual', value: (r) => num(r.cetAnnual) },
       { header: 'Criada em', value: (r) => iso(r.createdAt) },
-    ]);
+    ], query);
   }
 
-  async contracts(actorId?: string): Promise<string> {
+  async contracts(actorId?: string, query?: ReportQueryDto): Promise<string> {
+    const createdAt = this.range(query);
     const rows = await this.prisma.contract.findMany({
+      where: createdAt ? { createdAt } : undefined,
       orderBy: { createdAt: 'desc' },
+      take: EXPORT_ROW_CAP,
       select: {
         number: true,
         status: true,
@@ -120,12 +151,15 @@ export class ReportsService {
       { header: 'CET anual', value: (r) => num(r.cetAnnual) },
       { header: 'Início', value: (r) => iso(r.startDate) },
       { header: 'Fim', value: (r) => iso(r.endDate) },
-    ]);
+    ], query);
   }
 
-  async payments(actorId?: string): Promise<string> {
+  async payments(actorId?: string, query?: ReportQueryDto): Promise<string> {
+    const paidAt = this.range(query);
     const rows = await this.prisma.payment.findMany({
+      where: paidAt ? { paidAt } : undefined,
       orderBy: { paidAt: 'desc' },
+      take: EXPORT_ROW_CAP,
       select: {
         amount: true,
         method: true,
@@ -148,12 +182,15 @@ export class ReportsService {
       { header: 'Juros', value: (r) => num(r.interestPortion) },
       { header: 'Multa', value: (r) => num(r.lateFeePortion) },
       { header: 'Mora', value: (r) => num(r.lateInterestPortion) },
-    ]);
+    ], query);
   }
 
-  async collections(actorId?: string): Promise<string> {
+  async collections(actorId?: string, query?: ReportQueryDto): Promise<string> {
+    const openedAt = this.range(query);
     const rows = await this.prisma.collectionCase.findMany({
+      where: openedAt ? { openedAt } : undefined,
       orderBy: { daysOverdue: 'desc' },
+      take: EXPORT_ROW_CAP,
       select: {
         status: true,
         daysOverdue: true,
@@ -171,29 +208,23 @@ export class ReportsService {
       { header: 'Em atraso (com encargos)', value: (r) => num(r.totalOverdue) },
       { header: 'Aberto em', value: (r) => iso(r.openedAt) },
       { header: 'Resolvido em', value: (r) => iso(r.resolvedAt) },
-    ]);
+    ], query);
   }
 
-  async auditLogs(actorId?: string): Promise<string> {
-    // Cap the export and record whether it was truncated (no silent caps).
-    const total = await this.prisma.auditLog.count();
+  async auditLogs(actorId?: string, query?: ReportQueryDto): Promise<string> {
+    const createdAt = this.range(query);
     const rows = await this.prisma.auditLog.findMany({
+      where: createdAt ? { createdAt } : undefined,
       orderBy: { createdAt: 'desc' },
-      take: AUDIT_EXPORT_CAP,
+      take: EXPORT_ROW_CAP,
       select: { createdAt: true, userId: true, action: true, entity: true, entityId: true },
     });
-    return this.audited(
-      'audit',
-      actorId,
-      rows,
-      [
-        { header: 'Data', value: (r) => iso(r.createdAt) },
-        { header: 'Usuário', value: (r) => r.userId },
-        { header: 'Ação', value: (r) => r.action },
-        { header: 'Entidade', value: (r) => r.entity },
-        { header: 'ID da entidade', value: (r) => r.entityId },
-      ],
-      { total, capped: total > rows.length },
-    );
+    return this.audited('audit', actorId, rows, [
+      { header: 'Data', value: (r) => iso(r.createdAt) },
+      { header: 'Usuário', value: (r) => r.userId },
+      { header: 'Ação', value: (r) => r.action },
+      { header: 'Entidade', value: (r) => r.entity },
+      { header: 'ID da entidade', value: (r) => r.entityId },
+    ], query);
   }
 }
