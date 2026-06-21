@@ -7,6 +7,7 @@ import { Contract, Paginated } from '../lib/types';
 import { contractStatusLabel, currency } from '../lib/format';
 import { Column, DataTable } from '../components/DataTable';
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, StatusBadge } from '../components/ui';
+import { ExportCsvButton } from '../components/ExportCsvButton';
 
 const columns: Column<Contract>[] = [
   { key: 'number', header: 'Contrato', render: (c) => <span className="font-semibold text-slate-800 dark:text-slate-100">{c.number}</span> },
@@ -36,7 +37,11 @@ export function ContractsPage() {
 
   return (
     <div>
-      <PageHeader title="Contratos" subtitle="Carteira de empréstimos contratados" />
+      <PageHeader
+        title="Contratos"
+        subtitle="Carteira de empréstimos contratados"
+        actions={<ExportCsvButton path="/reports/contracts.csv" filename="contratos.csv" />}
+      />
 
       <div className="card">
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 dark:border-slate-800 p-4">

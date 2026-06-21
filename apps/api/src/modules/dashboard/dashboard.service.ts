@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { addMonths, monthKey, startOfDay } from '../../common/utils/date.util';
+import { addMonths, daysBetween, monthKey, startOfDay } from '../../common/utils/date.util';
+import { computeOutstanding } from '../../domain/finance/finance';
+import { centsToReais, reaisToCents } from '../../domain/finance/money';
 
 function n(v: unknown): number {
   return v == null ? 0 : Number(v);
@@ -24,7 +26,7 @@ export class DashboardService {
       lentAgg,
       receivedAgg,
       outstandingAgg,
-      overdueAgg,
+      overdueInstallments,
       proposalsByStatusRaw,
       contractsByStatusRaw,
       bandA,
@@ -46,9 +48,16 @@ export class DashboardService {
           contract: { status: { in: ['ACTIVE', 'DEFAULTED'] } },
         },
       }),
-      this.prisma.installment.aggregate({
-        _sum: { amountDue: true, amountPaid: true },
+      this.prisma.installment.findMany({
         where: { status: 'OVERDUE' },
+        select: {
+          amountDue: true,
+          amountPaid: true,
+          lateFee: true,
+          lateInterest: true,
+          dueDate: true,
+          contract: { select: { lateFeeRate: true, lateInterestRate: true } },
+        },
       }),
       this.prisma.creditProposal.groupBy({ by: ['status'], _count: true, orderBy: { status: 'asc' } }),
       this.prisma.contract.groupBy({ by: ['status'], _count: true, orderBy: { status: 'asc' } }),
@@ -68,8 +77,31 @@ export class DashboardService {
     ]);
 
     const portfolioOutstanding = round2(n(outstandingAgg._sum.amountDue) - n(outstandingAgg._sum.amountPaid));
-    const totalOverdue = round2(n(overdueAgg._sum.amountDue) - n(overdueAgg._sum.amountPaid));
-    const delinquencyRate = portfolioOutstanding > 0 ? round2((totalOverdue / portfolioOutstanding) * 100) : 0;
+
+    // Overdue is measured with the SAME domain helper as collections, so the
+    // dashboard and the collection cases can no longer disagree. We expose the
+    // base (principal + interest) and the late charges as named metrics instead
+    // of a single ambiguous "total overdue".
+    let overdueBaseCents = 0;
+    let lateChargesCents = 0;
+    for (const inst of overdueInstallments) {
+      const o = computeOutstanding({
+        amountDueCents: reaisToCents(inst.amountDue),
+        amountPaidCents: reaisToCents(inst.amountPaid),
+        lateFeePaidCents: reaisToCents(inst.lateFee),
+        lateInterestPaidCents: reaisToCents(inst.lateInterest),
+        daysLate: Math.max(0, daysBetween(startOfDay(inst.dueDate), today)),
+        fineRate: Number(inst.contract.lateFeeRate),
+        monthlyInterestRate: Number(inst.contract.lateInterestRate),
+      });
+      overdueBaseCents += o.baseOutstandingCents;
+      lateChargesCents += o.fineOutstandingCents + o.interestOutstandingCents;
+    }
+    const overduePrincipalInterest = centsToReais(overdueBaseCents);
+    const lateCharges = centsToReais(lateChargesCents);
+    const totalOverdueWithCharges = centsToReais(overdueBaseCents + lateChargesCents);
+    const delinquencyRate =
+      portfolioOutstanding > 0 ? round2((overduePrincipalInterest / portfolioOutstanding) * 100) : 0;
 
     // Build the 6-month receivables flow.
     const buckets = new Map<string, number>();
@@ -93,8 +125,13 @@ export class DashboardService {
         totalLent: round2(n(lentAgg._sum.principal)),
         totalReceived: round2(n(receivedAgg._sum.amount)),
         portfolioOutstanding,
-        totalOverdue,
-        delinquencyRate, // percent
+        // `totalOverdue` keeps its historical meaning: overdue principal + interest
+        // (the base). Late charges are surfaced separately to remove the previous
+        // dashboard-vs-collections ambiguity.
+        totalOverdue: overduePrincipalInterest,
+        lateCharges,
+        totalOverdueWithCharges,
+        delinquencyRate, // percent (over the overdue base)
       },
       proposalsByStatus: proposalsByStatusRaw.map((p) => ({ status: p.status, count: p._count })),
       contractsByStatus: contractsByStatusRaw.map((c) => ({ status: c.status, count: c._count })),

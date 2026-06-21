@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
 import { daysBetween, startOfDay } from '../../common/utils/date.util';
-import { computeLateCharges } from '../../domain/finance/finance';
+import { computeOutstanding } from '../../domain/finance/finance';
 import { centsToDecimal, centsToReais, reaisToCents, roundCents } from '../../domain/finance/money';
 import { ContractsService } from '../contracts/contracts.service';
 import { CollectionsService } from '../collections/collections.service';
@@ -39,20 +39,22 @@ export class PaymentsService {
     const amountDueCents = reaisToCents(installment.amountDue);
     const interestDueCents = reaisToCents(installment.interestDue);
     const amountPaidCents = reaisToCents(installment.amountPaid);
-    const baseRemaining = amountDueCents - amountPaidCents;
 
     const daysLate = Math.max(0, daysBetween(startOfDay(installment.dueDate), startOfDay(paidAt)));
-    const charges =
-      daysLate > 0
-        ? computeLateCharges(
-            baseRemaining,
-            daysLate,
-            Number(installment.contract.lateFeeRate),
-            Number(installment.contract.lateInterestRate),
-          )
-        : { fineCents: 0, interestCents: 0, totalCents: baseRemaining };
+    // Single source of truth — credits any fine/mora already paid so charges are
+    // never recomputed from scratch and charged twice.
+    const outstanding = computeOutstanding({
+      amountDueCents,
+      amountPaidCents,
+      lateFeePaidCents: reaisToCents(installment.lateFee),
+      lateInterestPaidCents: reaisToCents(installment.lateInterest),
+      daysLate,
+      fineRate: Number(installment.contract.lateFeeRate),
+      monthlyInterestRate: Number(installment.contract.lateInterestRate),
+    });
 
-    const totalOwedCents = baseRemaining + charges.fineCents + charges.interestCents;
+    const baseRemaining = outstanding.baseOutstandingCents;
+    const totalOwedCents = outstanding.totalOutstandingCents;
     const payCents = reaisToCents(dto.amount);
     if (payCents <= 0) throw new BadRequestException('Amount must be positive');
     if (payCents > totalOwedCents + 1) {
@@ -61,10 +63,10 @@ export class PaymentsService {
       );
     }
 
-    // Waterfall allocation.
-    const payMora = Math.min(payCents, charges.interestCents);
+    // Waterfall allocation: arrears interest -> fine -> installment base.
+    const payMora = Math.min(payCents, outstanding.interestOutstandingCents);
     let rem = payCents - payMora;
-    const payFine = Math.min(rem, charges.fineCents);
+    const payFine = Math.min(rem, outstanding.fineOutstandingCents);
     rem -= payFine;
     const payBase = Math.min(rem, baseRemaining);
 

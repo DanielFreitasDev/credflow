@@ -7,6 +7,7 @@ import { Paginated, Proposal } from '../lib/types';
 import { currency, percentFromFraction, proposalStatusLabel } from '../lib/format';
 import { Column, DataTable } from '../components/DataTable';
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, StatusBadge } from '../components/ui';
+import { ExportCsvButton } from '../components/ExportCsvButton';
 
 const columns: Column<Proposal>[] = [
   { key: 'number', header: 'Número', render: (p) => <span className="font-semibold text-slate-800 dark:text-slate-100">{p.number}</span> },
@@ -40,9 +41,12 @@ export function ProposalsPage() {
         title="Propostas"
         subtitle="Simulações e solicitações de crédito"
         actions={
-          <button className="btn-primary" onClick={() => navigate('/proposals/new')}>
-            <Plus className="h-4 w-4" /> Nova proposta
-          </button>
+          <>
+            <ExportCsvButton path="/reports/proposals.csv" filename="propostas.csv" />
+            <button className="btn-primary" onClick={() => navigate('/proposals/new')}>
+              <Plus className="h-4 w-4" /> Nova proposta
+            </button>
+          </>
         }
       />
 

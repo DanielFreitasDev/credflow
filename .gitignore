@@ -27,3 +27,6 @@ coverage/
 
 # Prisma
 prisma/*.db
+
+# Local notes / generated reviews
+REVISAO_TECNICA.md

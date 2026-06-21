@@ -71,6 +71,19 @@ api.interceptors.response.use(
   },
 );
 
+/** Downloads an authenticated endpoint (e.g. a CSV report) as a browser file. */
+export async function downloadCsv(path: string, filename: string): Promise<void> {
+  const res = await api.get(path, { responseType: 'blob' });
+  const url = URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Extracts a human-friendly message from an Axios error. */
 export function apiError(err: unknown): string {
   if (axios.isAxiosError(err)) {

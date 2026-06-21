@@ -10,8 +10,9 @@ import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
 import { buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
 import { addMonths, daysBetween, startOfDay } from '../../common/utils/date.util';
-import { computeCet, computeLateCharges, simulate } from '../../domain/finance/finance';
+import { computeCet, computeOutstanding, simulate } from '../../domain/finance/finance';
 import { centsToDecimal, reaisToCents } from '../../domain/finance/money';
+import { EncryptionService } from '../../common/crypto/encryption.service';
 import {
   CollectionQueryDto,
   CreateInteractionDto,
@@ -26,6 +27,7 @@ export class CollectionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly encryption: EncryptionService,
   ) {}
 
   /**
@@ -51,14 +53,16 @@ export class CollectionsService {
       if (daysLate > 0) {
         overdueIds.push(inst.id);
         maxDays = Math.max(maxDays, daysLate);
-        const outstanding = reaisToCents(inst.amountDue) - reaisToCents(inst.amountPaid);
-        const charges = computeLateCharges(
-          outstanding,
+        const o = computeOutstanding({
+          amountDueCents: reaisToCents(inst.amountDue),
+          amountPaidCents: reaisToCents(inst.amountPaid),
+          lateFeePaidCents: reaisToCents(inst.lateFee),
+          lateInterestPaidCents: reaisToCents(inst.lateInterest),
           daysLate,
-          Number(contract.lateFeeRate),
-          Number(contract.lateInterestRate),
-        );
-        totalOverdueCents += charges.totalCents;
+          fineRate: Number(contract.lateFeeRate),
+          monthlyInterestRate: Number(contract.lateInterestRate),
+        });
+        totalOverdueCents += o.totalOutstandingCents;
       }
     }
 
@@ -146,6 +150,7 @@ export class CollectionsService {
       }),
       this.prisma.collectionCase.count({ where }),
     ]);
+    data.forEach((c) => this.encryption.decryptDocumentField(c.contract?.customer));
     return paginatedResponse(data, total, page, pageSize);
   }
 
@@ -159,6 +164,7 @@ export class CollectionsService {
       },
     });
     if (!cse) throw new NotFoundException('Collection case not found');
+    this.encryption.decryptDocumentField(cse.contract?.customer);
     return cse;
   }
 
@@ -229,14 +235,17 @@ export class CollectionsService {
     for (const inst of contract.installments) {
       if (['PAID', 'CANCELLED', 'RENEGOTIATED'].includes(inst.status)) continue;
       unpaidIds.push(inst.id);
-      const base = reaisToCents(inst.amountDue) - reaisToCents(inst.amountPaid);
-      let extra = 0;
       const daysLate = daysBetween(startOfDay(inst.dueDate), today);
-      if (daysLate > 0) {
-        const ch = computeLateCharges(base, daysLate, Number(contract.lateFeeRate), Number(contract.lateInterestRate));
-        extra = ch.fineCents + ch.interestCents;
-      }
-      outstandingCents += base + extra;
+      const o = computeOutstanding({
+        amountDueCents: reaisToCents(inst.amountDue),
+        amountPaidCents: reaisToCents(inst.amountPaid),
+        lateFeePaidCents: reaisToCents(inst.lateFee),
+        lateInterestPaidCents: reaisToCents(inst.lateInterest),
+        daysLate: Math.max(0, daysLate),
+        fineRate: Number(contract.lateFeeRate),
+        monthlyInterestRate: Number(contract.lateInterestRate),
+      });
+      outstandingCents += o.totalOutstandingCents;
     }
     if (outstandingCents <= 0) throw new BadRequestException('Contract has no outstanding balance to renegotiate');
 
@@ -250,48 +259,54 @@ export class CollectionsService {
     const endDate = addMonths(firstDueDate, dto.termMonths - 1);
     const year = new Date().getFullYear();
 
-    const newContract = await retryOnUniqueViolation(async () => {
-      const count = await this.prisma.contract.count({ where: { number: { startsWith: `CTR-${year}-` } } });
-      const number = buildSequentialNumber('CTR', year, count + 1);
-      return this.prisma.contract.create({
-        data: {
-          number,
-          customerId: contract.customerId,
-          status: 'ACTIVE',
-          amortizationType: amortization,
-          principal: centsToDecimal(outstandingCents),
-          interestRate: rate,
-          termMonths: dto.termMonths,
-          totalAmount: centsToDecimal(sim.totalAmountCents),
-          totalInterest: centsToDecimal(sim.totalInterestCents),
-          cetAnnual: Math.round(cet.annual * 1e6) / 1e6,
-          lateFeeRate: Number(contract.lateFeeRate),
-          lateInterestRate: Number(contract.lateInterestRate),
-          startDate,
-          firstDueDate,
-          endDate,
-          signedById: actorId,
-          renegotiatedFromId: contract.id,
-          installments: {
-            create: sim.schedule.map((s) => ({
-              number: s.number,
-              dueDate: addMonths(firstDueDate, s.number - 1),
-              principalDue: centsToDecimal(s.principal),
-              interestDue: centsToDecimal(s.interest),
-              amountDue: centsToDecimal(s.amount),
-            })),
+    // New contract + closing the old one (installments, contract status and the
+    // collection case) commit atomically so a renegotiation can't half-apply.
+    const newContract = await retryOnUniqueViolation(() =>
+      this.prisma.$transaction(async (tx) => {
+        const count = await tx.contract.count({ where: { number: { startsWith: `CTR-${year}-` } } });
+        const number = buildSequentialNumber('CTR', year, count + 1);
+        const created = await tx.contract.create({
+          data: {
+            number,
+            customerId: contract.customerId,
+            status: 'ACTIVE',
+            amortizationType: amortization,
+            principal: centsToDecimal(outstandingCents),
+            interestRate: rate,
+            termMonths: dto.termMonths,
+            totalAmount: centsToDecimal(sim.totalAmountCents),
+            totalInterest: centsToDecimal(sim.totalInterestCents),
+            cetAnnual: Math.round(cet.annual * 1e6) / 1e6,
+            lateFeeRate: Number(contract.lateFeeRate),
+            lateInterestRate: Number(contract.lateInterestRate),
+            startDate,
+            firstDueDate,
+            endDate,
+            signedById: actorId,
+            renegotiatedFromId: contract.id,
+            installments: {
+              create: sim.schedule.map((s) => ({
+                number: s.number,
+                dueDate: addMonths(firstDueDate, s.number - 1),
+                principalDue: centsToDecimal(s.principal),
+                interestDue: centsToDecimal(s.interest),
+                amountDue: centsToDecimal(s.amount),
+              })),
+            },
           },
-        },
-        include: { installments: { orderBy: { number: 'asc' } } },
-      });
-    });
+          include: { installments: { orderBy: { number: 'asc' } } },
+        });
 
-    await this.prisma.installment.updateMany({ where: { id: { in: unpaidIds } }, data: { status: 'RENEGOTIATED' } });
-    await this.prisma.contract.update({ where: { id: contractId }, data: { status: 'RENEGOTIATED' } });
-    await this.prisma.collectionCase.updateMany({
-      where: { contractId, status: { notIn: ['RESOLVED', 'WRITTEN_OFF'] } },
-      data: { status: 'RESOLVED', resolvedAt: new Date() },
-    });
+        await tx.installment.updateMany({ where: { id: { in: unpaidIds } }, data: { status: 'RENEGOTIATED' } });
+        await tx.contract.update({ where: { id: contractId }, data: { status: 'RENEGOTIATED' } });
+        await tx.collectionCase.updateMany({
+          where: { contractId, status: { notIn: ['RESOLVED', 'WRITTEN_OFF'] } },
+          data: { status: 'RESOLVED', resolvedAt: new Date() },
+        });
+
+        return created;
+      }),
+    );
 
     await this.audit.record({
       userId: actorId,

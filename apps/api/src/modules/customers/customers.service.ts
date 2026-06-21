@@ -19,17 +19,20 @@ export class CustomersService {
     private readonly encryption: EncryptionService,
   ) {}
 
-  /** Document numbers are stored encrypted at rest; decrypt for the 360 view. */
-  private decryptDocuments<T extends { documents?: { number: string | null }[] }>(customer: T): T {
+  /**
+   * The primary document and any attached document numbers are encrypted at rest.
+   * Decrypt them for output; `safeDecrypt` tolerates legacy plaintext (seed data
+   * or rows not yet backfilled).
+   */
+  private decryptCustomer<
+    T extends { document?: string | null; documents?: { number: string | null }[] },
+  >(customer: T): T {
+    if (customer.document != null) {
+      customer.document = this.encryption.safeDecrypt(customer.document) as string;
+    }
     if (customer.documents) {
       for (const doc of customer.documents) {
-        if (doc.number) {
-          try {
-            doc.number = this.encryption.decrypt(doc.number);
-          } catch {
-            /* value was stored in plaintext (e.g. seed) — leave as is */
-          }
-        }
+        if (doc.number) doc.number = this.encryption.safeDecrypt(doc.number);
       }
     }
     return customer;
@@ -46,7 +49,7 @@ export class CustomersService {
   }
 
   async create(dto: CreateCustomerDto, actorId?: string) {
-    const document = this.normalizeAndValidateDocument(dto.document, dto.type);
+    const digits = this.normalizeAndValidateDocument(dto.document, dto.type);
 
     const customer = await this.prisma.customer.create({
       data: {
@@ -54,7 +57,9 @@ export class CustomersService {
         status: dto.status ?? 'PROSPECT',
         name: dto.name,
         tradeName: dto.tradeName,
-        document,
+        document: this.encryption.encrypt(digits),
+        documentHash: this.encryption.blindIndex(digits),
+        documentLast4: digits.slice(-4),
         email: dto.email,
         phone: dto.phone,
         birthDate: dto.birthDate ? new Date(dto.birthDate) : null,
@@ -86,9 +91,10 @@ export class CustomersService {
       action: 'CREATE',
       entity: 'Customer',
       entityId: customer.id,
-      after: { document: customer.document, name: customer.name, type: customer.type },
+      // Never log the full document — only the last 4 digits.
+      after: { documentLast4: digits.slice(-4), name: customer.name, type: customer.type },
     });
-    return customer;
+    return this.decryptCustomer(customer);
   }
 
   async findAll(query: CustomerQueryDto) {
@@ -101,7 +107,11 @@ export class CustomersService {
             OR: [
               { name: { contains: query.search, mode: 'insensitive' } },
               { tradeName: { contains: query.search, mode: 'insensitive' } },
-              { document: { contains: onlyDigits(query.search) || query.search } },
+              // Documents are encrypted, so match by the deterministic blind index
+              // (exact full-number lookup) instead of a plaintext substring.
+              ...(onlyDigits(query.search)
+                ? [{ documentHash: this.encryption.blindIndex(onlyDigits(query.search)) }]
+                : []),
               { email: { contains: query.search, mode: 'insensitive' } },
             ],
           }
@@ -118,7 +128,7 @@ export class CustomersService {
       }),
       this.prisma.customer.count({ where }),
     ]);
-    return paginatedResponse(data, total, page, pageSize);
+    return paginatedResponse(data.map((c) => this.decryptCustomer(c)), total, page, pageSize);
   }
 
   async findOne(id: string) {
@@ -133,7 +143,7 @@ export class CustomersService {
       },
     });
     if (!customer) throw new NotFoundException('Customer not found');
-    return this.decryptDocuments(customer);
+    return this.decryptCustomer(customer);
   }
 
   /** Aggregated financial history used in the customer 360 view. */
@@ -179,9 +189,9 @@ export class CustomersService {
   async update(id: string, dto: UpdateCustomerDto, actorId?: string) {
     const before = await this.ensureExists(id);
 
-    let document: string | undefined;
+    let documentDigits: string | undefined;
     if (dto.document) {
-      document = this.normalizeAndValidateDocument(dto.document, dto.type ?? before.type);
+      documentDigits = this.normalizeAndValidateDocument(dto.document, dto.type ?? before.type);
     }
 
     const customer = await this.prisma.customer.update({
@@ -191,7 +201,13 @@ export class CustomersService {
         status: dto.status,
         name: dto.name,
         tradeName: dto.tradeName,
-        ...(document ? { document } : {}),
+        ...(documentDigits
+          ? {
+              document: this.encryption.encrypt(documentDigits),
+              documentHash: this.encryption.blindIndex(documentDigits),
+              documentLast4: documentDigits.slice(-4),
+            }
+          : {}),
         email: dto.email,
         phone: dto.phone,
         birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
@@ -222,7 +238,7 @@ export class CustomersService {
       before: { name: before.name, status: before.status, monthlyIncome: Number(before.monthlyIncome) },
       after: { name: customer.name, status: customer.status, monthlyIncome: Number(customer.monthlyIncome) },
     });
-    return customer;
+    return this.decryptCustomer(customer);
   }
 
   async updateStatus(id: string, status: 'PROSPECT' | 'ACTIVE' | 'INACTIVE' | 'BLOCKED', reason?: string, actorId?: string) {
@@ -236,7 +252,7 @@ export class CustomersService {
       before: { status: before.status },
       after: { status, reason },
     });
-    return customer;
+    return this.decryptCustomer(customer);
   }
 
   async updateScore(id: string, score: number, reason?: string, actorId?: string) {
@@ -250,7 +266,7 @@ export class CustomersService {
       before: { internalScore: before.internalScore },
       after: { internalScore: score, reason },
     });
-    return customer;
+    return this.decryptCustomer(customer);
   }
 
   private async ensureExists(id: string) {

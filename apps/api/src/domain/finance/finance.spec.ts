@@ -1,10 +1,13 @@
 import {
   computeCet,
+  computeContractCosting,
   computeLateCharges,
   computeMonthlyIrr,
+  computeOutstanding,
   pricePaymentCents,
   simulate,
 } from './finance';
+import { estimateIofCents } from './fees';
 import { sum } from './money';
 import { DEFAULT_POLICY, evaluateCredit } from './credit-policy';
 
@@ -141,6 +144,105 @@ describe('finance: late charges', () => {
     expect(r.fineCents).toBe(2000); // 2% of 100000
     expect(r.interestCents).toBe(Math.round(100000 * (0.01 / 30) * 15)); // 500
     expect(r.totalCents).toBe(100000 + r.fineCents + r.interestCents);
+  });
+});
+
+describe('finance: outstanding balance (credits charges already paid)', () => {
+  const base = {
+    amountDueCents: 100000,
+    amountPaidCents: 0,
+    lateFeePaidCents: 0,
+    lateInterestPaidCents: 0,
+    daysLate: 15,
+    fineRate: 0.02,
+    monthlyInterestRate: 0.01,
+  };
+
+  it('returns base only when not overdue', () => {
+    const o = computeOutstanding({ ...base, daysLate: 0 });
+    expect(o.fineOutstandingCents).toBe(0);
+    expect(o.interestOutstandingCents).toBe(0);
+    expect(o.totalOutstandingCents).toBe(100000);
+  });
+
+  it('matches gross late charges when nothing was paid toward them', () => {
+    const o = computeOutstanding(base);
+    const gross = computeLateCharges(100000, 15, 0.02, 0.01);
+    expect(o.fineOutstandingCents).toBe(gross.fineCents); // 2000
+    expect(o.interestOutstandingCents).toBe(gross.interestCents); // 500
+    expect(o.totalOutstandingCents).toBe(gross.totalCents); // 102500
+  });
+
+  it('credits arrears interest already paid (the reported bug)', () => {
+    // R$10 already paid toward mora must reduce what is still due.
+    const o = computeOutstanding({ ...base, lateInterestPaidCents: 1000 });
+    expect(o.interestOutstandingCents).toBe(0); // 500 owed - 1000 paid, clamped
+    expect(o.totalOutstandingCents).toBe(102000); // base 100000 + fine 2000 + mora 0
+  });
+
+  it('credits fine already paid', () => {
+    const o = computeOutstanding({ ...base, lateFeePaidCents: 2000 });
+    expect(o.fineOutstandingCents).toBe(0);
+    expect(o.totalOutstandingCents).toBe(100500); // base + mora only
+  });
+
+  it('shrinks charges as the base is partially settled', () => {
+    const o = computeOutstanding({ ...base, amountPaidCents: 40000 });
+    expect(o.baseOutstandingCents).toBe(60000);
+    expect(o.fineOutstandingCents).toBe(1200); // 2% of 60000
+    expect(o.interestOutstandingCents).toBe(300); // 60000 * 0.01/30 * 15
+    expect(o.totalOutstandingCents).toBe(61500);
+  });
+
+  it('is idempotent: paying the full total leaves nothing owed', () => {
+    const before = computeOutstanding(base); // total 102500
+    // Apply the waterfall: mora 500, fine 2000, base 100000.
+    const after = computeOutstanding({
+      ...base,
+      amountPaidCents: 100000,
+      lateFeePaidCents: before.fineOutstandingCents,
+      lateInterestPaidCents: before.interestOutstandingCents,
+    });
+    expect(after.totalOutstandingCents).toBe(0);
+  });
+});
+
+describe('finance: contract costing honours the approved amount', () => {
+  // Reproduces the reported scenario: R$10.000 requested over 12 months.
+  const requestedCents = 1_000_000;
+  const proposalIofCents = estimateIofCents(requestedCents, 12); // 33_320
+  const baseInput = {
+    requestedCents,
+    proposalIofCents,
+    tacCents: 0,
+    monthlyRate: 0.035,
+    termMonths: 12,
+    amortization: 'PRICE' as const,
+  };
+
+  it('reproduces the proposal when approved == requested', () => {
+    const c = computeContractCosting({ ...baseInput, approvedCents: requestedCents });
+    expect(c.iofCents).toBe(proposalIofCents);
+    expect(c.financedCents).toBe(requestedCents + proposalIofCents); // 1_033_320 (R$10.333,20)
+  });
+
+  it('re-derives financed amount from a reduced approval (the bug)', () => {
+    const c = computeContractCosting({ ...baseInput, approvedCents: 500_000 }); // approve R$5.000
+    expect(c.iofCents).toBe(Math.round((proposalIofCents * 500_000) / 1_000_000)); // 16_660
+    expect(c.financedCents).toBe(500_000 + 16_660); // 516_660 (R$5.166,60), NOT 1_033_320
+    expect(c.financedCents).toBeLessThan(requestedCents);
+    expect(c.cetAnnual).toBeGreaterThan(0);
+  });
+
+  it('scales TAC-free financing and keeps the schedule consistent', () => {
+    const c = computeContractCosting({ ...baseInput, approvedCents: 500_000 });
+    expect(c.schedule).toHaveLength(12);
+    expect(sum(c.schedule.map((s) => s.amount))).toBe(c.totalAmountCents);
+    expect(c.totalAmountCents).toBe(c.financedCents + c.totalInterestCents);
+  });
+
+  it('rejects a non-positive approved amount', () => {
+    expect(() => computeContractCosting({ ...baseInput, approvedCents: 0 })).toThrow();
   });
 });
 

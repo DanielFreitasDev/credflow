@@ -90,7 +90,7 @@ Status changes are validated, not free-form. When editing these flows, keep the 
 `PRO-2026-000001`, `CTR-2026-000001` via `common/utils/sequence.util.ts`: `buildSequentialNumber()` wrapped in `retryOnUniqueViolation()` (retries Prisma `P2002`) because count-based numbering can race under concurrency.
 
 ### PII encryption
-`common/crypto/encryption.service.ts` — AES-256-GCM for sensitive fields (e.g. document numbers) at rest. Output is `base64(iv[12] | authTag[16] | ciphertext)`. Decryption tolerates legacy plaintext (seed data). `ENCRYPTION_KEY` must decode to exactly 32 bytes.
+`common/crypto/encryption.service.ts` (crypto primitives live in framework-free `common/crypto/pii.util.ts`, shared with `prisma/seed.ts` so encryption never drifts) — AES-256-GCM for sensitive fields at rest. The customer's primary CPF/CNPJ (`Customer.document`) **and** attached `CustomerDocument.number` are stored as ciphertext; uniqueness and exact lookup use a deterministic **blind index** (`Customer.documentHash`), with `documentLast4` for masked display/audit (never log the full document). Output is `base64(iv[12] | authTag[16] | ciphertext)`. `safeDecrypt` tolerates legacy plaintext (seed / rows not yet backfilled); services decrypt on read, so the API still returns the real document to authorized users. `ENCRYPTION_KEY` must decode to exactly 32 bytes. After deploying the `protect_customer_document` migration on an existing DB, run `npm run db:backfill-documents` to encrypt legacy rows.
 
 ### Dates
 `common/utils/date.util.ts` — UTC-safe helpers. `addMonths` uses noon to dodge TZ shifts and handles month overflow; `daysBetween` floors a UTC day diff. Use these for due dates and arrears rather than raw `Date` math.

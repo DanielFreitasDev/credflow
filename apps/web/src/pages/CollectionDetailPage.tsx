@@ -6,7 +6,7 @@ import { api, apiError } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { CollectionCase } from '../lib/types';
 import { collectionStatusLabel, currency, date, dateTime } from '../lib/format';
-import { ErrorState, LoadingState, PageHeader, Spinner, StatusBadge, Stat } from '../components/ui';
+import { ErrorState, LoadingState, PageHeader, StatusBadge, Stat } from '../components/ui';
 
 const CHANNELS = ['PHONE', 'EMAIL', 'SMS', 'WHATSAPP', 'LETTER', 'VISIT', 'SYSTEM'];
 
@@ -86,7 +86,7 @@ export function CollectionDetailPage() {
 
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="card p-4"><Stat label="Dias em atraso" value={<span className="text-rose-600 dark:text-rose-400">{c.daysOverdue}</span>} /></div>
-        <div className="card p-4"><Stat label="Valor em atraso" value={currency(c.totalOverdue)} /></div>
+        <div className="card p-4"><Stat label="Em atraso (com encargos)" value={currency(c.totalOverdue)} /></div>
         <div className="card p-4"><Stat label="Status" value={<StatusBadge status={c.status} label={collectionStatusLabel[c.status]} />} /></div>
         <div className="card p-4"><Stat label="Aberto em" value={date(c.openedAt)} /></div>
       </div>

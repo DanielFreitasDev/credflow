@@ -277,7 +277,9 @@ export interface DashboardOverview {
     totalLent: number;
     totalReceived: number;
     portfolioOutstanding: number;
-    totalOverdue: number;
+    totalOverdue: number; // overdue principal + interest (base)
+    lateCharges: number; // accrued fine + arrears interest still owed
+    totalOverdueWithCharges: number; // totalOverdue + lateCharges
     delinquencyRate: number;
   };
   proposalsByStatus: { status: ProposalStatus; count: number }[];

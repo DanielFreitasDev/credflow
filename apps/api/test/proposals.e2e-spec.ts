@@ -5,6 +5,7 @@ import { ProposalsController } from '../src/modules/proposals/proposals.controll
 import { ProposalsService } from '../src/modules/proposals/proposals.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { AuditService } from '../src/common/audit/audit.service';
+import { EncryptionService } from '../src/common/crypto/encryption.service';
 
 /**
  * Exercises the HTTP + validation + finance pipeline end-to-end for the
@@ -20,6 +21,7 @@ describe('Proposals simulation (e2e)', () => {
         ProposalsService,
         { provide: PrismaService, useValue: {} },
         { provide: AuditService, useValue: { record: jest.fn() } },
+        { provide: EncryptionService, useValue: { decryptDocumentField: jest.fn() } },
       ],
     }).compile();
 

@@ -4,6 +4,7 @@ import { api, apiError } from '../lib/api';
 import { AuditLog, Paginated } from '../lib/types';
 import { dateTime } from '../lib/format';
 import { Badge, EmptyState, ErrorState, LoadingState, PageHeader, Pagination } from '../components/ui';
+import { ExportCsvButton } from '../components/ExportCsvButton';
 
 export function AuditPage() {
   const [page, setPage] = useState(1);
@@ -17,7 +18,11 @@ export function AuditPage() {
 
   return (
     <div>
-      <PageHeader title="Auditoria" subtitle="Trilha de auditoria de todas as operações" />
+      <PageHeader
+        title="Auditoria"
+        subtitle="Trilha de auditoria de todas as operações"
+        actions={<ExportCsvButton path="/reports/audit.csv" filename="auditoria.csv" />}
+      />
       <div className="card">
         <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 p-4">
           <select className="input w-auto" value={entity} onChange={(e) => { setEntity(e.target.value); setPage(1); }}>

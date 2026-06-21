@@ -12,6 +12,7 @@ import {
 } from '../lib/format';
 import { DataTable, Column } from '../components/DataTable';
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, StatusBadge } from '../components/ui';
+import { ExportCsvButton } from '../components/ExportCsvButton';
 
 const columns: Column<Customer>[] = [
   {
@@ -54,9 +55,12 @@ export function CustomersPage() {
         title="Clientes"
         subtitle="Pessoas físicas e jurídicas"
         actions={
-          <button className="btn-primary" onClick={() => navigate('/customers/new')}>
-            <Plus className="h-4 w-4" /> Novo cliente
-          </button>
+          <>
+            <ExportCsvButton path="/reports/customers.csv" filename="clientes.csv" />
+            <button className="btn-primary" onClick={() => navigate('/customers/new')}>
+              <Plus className="h-4 w-4" /> Novo cliente
+            </button>
+          </>
         }
       />
 

@@ -62,7 +62,7 @@ export function DashboardPage() {
         <KpiCard icon={<Wallet className="h-6 w-6 text-brand-600 dark:text-brand-400" />} tone="bg-brand-50 dark:bg-brand-500/15" label="Carteira (a receber)" value={currency(kpis.portfolioOutstanding)} />
         <KpiCard icon={<TrendingUp className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />} tone="bg-emerald-50 dark:bg-emerald-500/15" label="Total emprestado" value={currency(kpis.totalLent)} />
         <KpiCard icon={<TrendingUp className="h-6 w-6 text-sky-600 dark:text-sky-400" />} tone="bg-sky-50 dark:bg-sky-500/15" label="Total recebido" value={currency(kpis.totalReceived)} />
-        <KpiCard icon={<AlertTriangle className="h-6 w-6 text-rose-600 dark:text-rose-400" />} tone="bg-rose-50 dark:bg-rose-500/15" label="Total em atraso" value={currency(kpis.totalOverdue)} />
+        <KpiCard icon={<AlertTriangle className="h-6 w-6 text-rose-600 dark:text-rose-400" />} tone="bg-rose-50 dark:bg-rose-500/15" label="Em atraso (principal + juros)" value={currency(kpis.totalOverdue)} />
         <KpiCard icon={<Percent className="h-6 w-6 text-amber-600 dark:text-amber-400" />} tone="bg-amber-50 dark:bg-amber-500/15" label="Inadimplência" value={percent(kpis.delinquencyRate)} />
         <KpiCard icon={<Users className="h-6 w-6 text-purple-600 dark:text-purple-400" />} tone="bg-purple-50 dark:bg-purple-500/15" label="Clientes" value={number(kpis.customers)} />
       </div>

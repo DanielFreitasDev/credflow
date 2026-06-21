@@ -10,9 +10,10 @@ import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
 import { buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
 import { addMonths, daysBetween, startOfDay } from '../../common/utils/date.util';
-import { simulate, computeLateCharges } from '../../domain/finance/finance';
+import { computeContractCosting, computeOutstanding } from '../../domain/finance/finance';
 import { centsToDecimal, centsToReais, reaisToCents } from '../../domain/finance/money';
 import { ProposalsService } from '../proposals/proposals.service';
+import { EncryptionService } from '../../common/crypto/encryption.service';
 import { ContractQueryDto, CreateContractDto } from './dto/contract.dto';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class ContractsService {
     private readonly prisma: PrismaService,
     private readonly proposals: ProposalsService,
     private readonly audit: AuditService,
+    private readonly encryption: EncryptionService,
   ) {}
 
   async createFromProposal(proposalId: string, dto: CreateContractDto, actorId?: string) {
@@ -35,9 +37,23 @@ export class ContractsService {
     const existing = await this.prisma.contract.findUnique({ where: { proposalId } });
     if (existing) throw new ConflictException('Proposal already has a contract');
 
-    const principalCents = reaisToCents(proposal.financedAmount);
-    const sim = simulate({
-      principalCents,
+    // Honour the approved amount (option A: cash released to the customer). When
+    // the analysis approved a value different from the requested one, IOF /
+    // financed amount / schedule / CET are re-derived from it instead of copying
+    // the proposal's requested figures. Equal amounts reproduce the proposal.
+    const requestedCents = reaisToCents(proposal.requestedAmount);
+    const approvedCents =
+      proposal.analysis?.approvedAmount != null
+        ? reaisToCents(proposal.analysis.approvedAmount)
+        : requestedCents;
+    if (approvedCents <= 0) {
+      throw new BadRequestException('Approved amount must be greater than zero to contract');
+    }
+    const costing = computeContractCosting({
+      approvedCents,
+      requestedCents,
+      proposalIofCents: reaisToCents(proposal.iofAmount),
+      tacCents: reaisToCents(proposal.tacAmount),
       monthlyRate: Number(proposal.interestRate),
       termMonths: proposal.termMonths,
       amortization: proposal.amortizationType,
@@ -48,53 +64,66 @@ export class ContractsService {
     const endDate = addMonths(firstDueDate, proposal.termMonths - 1);
 
     const year = new Date().getFullYear();
-    const contract = await retryOnUniqueViolation(async () => {
-      const count = await this.prisma.contract.count({
-        where: { number: { startsWith: `CTR-${year}-` } },
-      });
-      const number = buildSequentialNumber('CTR', year, count + 1);
+    // Contract + installments + proposal status + customer activation must all
+    // commit together, so a mid-flow failure can't leave a contract attached to
+    // a still-APPROVED proposal.
+    const contract = await retryOnUniqueViolation(() =>
+      this.prisma.$transaction(async (tx) => {
+        const count = await tx.contract.count({
+          where: { number: { startsWith: `CTR-${year}-` } },
+        });
+        const number = buildSequentialNumber('CTR', year, count + 1);
 
-      return this.prisma.contract.create({
-        data: {
-          number,
-          proposalId,
-          customerId: proposal.customerId,
-          status: ContractStatus.ACTIVE,
-          amortizationType: proposal.amortizationType,
-          principal: centsToDecimal(principalCents),
-          interestRate: Number(proposal.interestRate),
-          termMonths: proposal.termMonths,
-          totalAmount: centsToDecimal(sim.totalAmountCents),
-          totalInterest: centsToDecimal(sim.totalInterestCents),
-          iofAmount: proposal.iofAmount,
-          tacAmount: proposal.tacAmount,
-          cetAnnual: Number(proposal.cetAnnual),
-          lateFeeRate: dto.lateFeeRate ?? 0.02,
-          lateInterestRate: dto.lateInterestRate ?? 0.01,
-          startDate,
-          firstDueDate,
-          endDate,
-          signedById: actorId,
-          installments: {
-            create: sim.schedule.map((s) => ({
-              number: s.number,
-              dueDate: addMonths(firstDueDate, s.number - 1),
-              principalDue: centsToDecimal(s.principal),
-              interestDue: centsToDecimal(s.interest),
-              amountDue: centsToDecimal(s.amount),
-            })),
+        const created = await tx.contract.create({
+          data: {
+            number,
+            proposalId,
+            customerId: proposal.customerId,
+            status: ContractStatus.ACTIVE,
+            amortizationType: proposal.amortizationType,
+            principal: centsToDecimal(costing.financedCents),
+            interestRate: Number(proposal.interestRate),
+            termMonths: proposal.termMonths,
+            totalAmount: centsToDecimal(costing.totalAmountCents),
+            totalInterest: centsToDecimal(costing.totalInterestCents),
+            iofAmount: centsToDecimal(costing.iofCents),
+            tacAmount: centsToDecimal(costing.tacCents),
+            cetAnnual: Math.round(costing.cetAnnual * 1e6) / 1e6,
+            lateFeeRate: dto.lateFeeRate ?? 0.02,
+            lateInterestRate: dto.lateInterestRate ?? 0.01,
+            startDate,
+            firstDueDate,
+            endDate,
+            signedById: actorId,
+            installments: {
+              create: costing.schedule.map((s) => ({
+                number: s.number,
+                dueDate: addMonths(firstDueDate, s.number - 1),
+                principalDue: centsToDecimal(s.principal),
+                interestDue: centsToDecimal(s.interest),
+                amountDue: centsToDecimal(s.amount),
+              })),
+            },
           },
-        },
-        include: { installments: { orderBy: { number: 'asc' } } },
-      });
-    });
+          include: { installments: { orderBy: { number: 'asc' } } },
+        });
 
-    // Move the proposal to CONTRACTED and activate the customer.
-    await this.proposals.changeStatus(proposalId, ProposalStatus.CONTRACTED, actorId, `Contract ${contract.number} created`);
-    await this.prisma.customer.updateMany({
-      where: { id: proposal.customerId, status: 'PROSPECT' },
-      data: { status: 'ACTIVE' },
-    });
+        // Move the proposal to CONTRACTED and activate the customer — same tx.
+        await this.proposals.changeStatus(
+          proposalId,
+          ProposalStatus.CONTRACTED,
+          actorId,
+          `Contract ${number} created`,
+          tx,
+        );
+        await tx.customer.updateMany({
+          where: { id: proposal.customerId, status: 'PROSPECT' },
+          data: { status: 'ACTIVE' },
+        });
+
+        return created;
+      }),
+    );
 
     await this.audit.record({
       userId: actorId,
@@ -136,7 +165,10 @@ export class ContractsService {
       this.prisma.contract.count({ where }),
     ]);
 
-    const data = rows.map(({ installments, ...c }) => ({ ...c, ...summarize(installments) }));
+    const data = rows.map(({ installments, ...c }) => {
+      this.encryption.decryptDocumentField(c.customer);
+      return { ...c, ...summarize(installments) };
+    });
     return paginatedResponse(data, total, page, pageSize);
   }
 
@@ -152,6 +184,7 @@ export class ContractsService {
       },
     });
     if (!contract) throw new NotFoundException('Contract not found');
+    this.encryption.decryptDocumentField(contract.customer);
     return { ...contract, summary: summarize(contract.installments) };
   }
 
@@ -169,26 +202,30 @@ export class ContractsService {
     if (!installment) throw new NotFoundException('Installment not found');
 
     const reference = atDate ? new Date(atDate) : new Date();
-    const outstandingCents = reaisToCents(installment.amountDue) - reaisToCents(installment.amountPaid);
     const daysLate =
-      installment.status === 'PAID' ? 0 : Math.max(0, daysBetween(installment.dueDate, startOfDay(reference)));
+      installment.status === 'PAID'
+        ? 0
+        : Math.max(0, daysBetween(startOfDay(installment.dueDate), startOfDay(reference)));
 
-    const charges = computeLateCharges(
-      outstandingCents,
+    const outstanding = computeOutstanding({
+      amountDueCents: reaisToCents(installment.amountDue),
+      amountPaidCents: reaisToCents(installment.amountPaid),
+      lateFeePaidCents: reaisToCents(installment.lateFee),
+      lateInterestPaidCents: reaisToCents(installment.lateInterest),
       daysLate,
-      Number(installment.contract.lateFeeRate),
-      Number(installment.contract.lateInterestRate),
-    );
+      fineRate: Number(installment.contract.lateFeeRate),
+      monthlyInterestRate: Number(installment.contract.lateInterestRate),
+    });
 
     return {
       installmentId,
       number: installment.number,
       dueDate: installment.dueDate,
       daysLate,
-      outstanding: centsToReais(outstandingCents),
-      fine: centsToReais(charges.fineCents),
-      interest: centsToReais(charges.interestCents),
-      totalDue: centsToReais(charges.totalCents),
+      outstanding: centsToReais(outstanding.baseOutstandingCents),
+      fine: centsToReais(outstanding.fineOutstandingCents),
+      interest: centsToReais(outstanding.interestOutstandingCents),
+      totalDue: centsToReais(outstanding.totalOutstandingCents),
     };
   }
 

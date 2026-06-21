@@ -178,8 +178,12 @@ model Customer {
   // PF: nome completo | PJ: razão social
   name          String
   tradeName     String? // PJ: nome fantasia
-  // CPF (PF) ou CNPJ (PJ), apenas dígitos
-  document      String         @unique
+  // CPF (PF) ou CNPJ (PJ): cifrado em repouso (AES-256-GCM). A unicidade e a
+  // busca exata usam o blind index determinístico `documentHash`; `documentLast4`
+  // guarda os últimos 4 dígitos para exibição mascarada / auditoria.
+  document      String // ciphertext (base64 iv|tag|ct)
+  documentHash  String?        @unique
+  documentLast4 String?
   email         String?
   phone         String?
   birthDate     DateTime? // PF

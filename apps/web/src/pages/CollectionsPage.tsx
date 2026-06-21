@@ -9,6 +9,7 @@ import { CollectionCase, Paginated } from '../lib/types';
 import { collectionStatusLabel, currency } from '../lib/format';
 import { Column, DataTable } from '../components/DataTable';
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, Spinner, StatusBadge } from '../components/ui';
+import { ExportCsvButton } from '../components/ExportCsvButton';
 
 export function CollectionsPage() {
   const navigate = useNavigate();
@@ -42,7 +43,7 @@ export function CollectionsPage() {
     { key: 'contract', header: 'Contrato', render: (c) => <span className="font-semibold text-slate-800 dark:text-slate-100">{c.contract?.number}</span> },
     { key: 'customer', header: 'Cliente', render: (c) => c.contract?.customer?.name ?? '—' },
     { key: 'daysOverdue', header: 'Atraso', align: 'right', render: (c) => <span className="font-medium text-rose-600 dark:text-rose-400">{c.daysOverdue} dias</span> },
-    { key: 'totalOverdue', header: 'Valor em atraso', align: 'right', render: (c) => currency(c.totalOverdue) },
+    { key: 'totalOverdue', header: 'Em atraso (com encargos)', align: 'right', render: (c) => currency(c.totalOverdue) },
     { key: 'status', header: 'Status', render: (c) => <StatusBadge status={c.status} label={collectionStatusLabel[c.status]} /> },
   ];
 
@@ -52,11 +53,14 @@ export function CollectionsPage() {
         title="Cobrança"
         subtitle="Carteira inadimplente e régua de cobrança"
         actions={
-          hasRole('OPERATOR', 'MANAGER') && (
-            <button className="btn-primary" onClick={runEngine} disabled={running}>
-              {running ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />} Executar régua
-            </button>
-          )
+          <>
+            <ExportCsvButton path="/reports/collections.csv" filename="cobranca.csv" />
+            {hasRole('OPERATOR', 'MANAGER') && (
+              <button className="btn-primary" onClick={runEngine} disabled={running}>
+                {running ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />} Executar régua
+              </button>
+            )}
+          </>
         }
       />
 

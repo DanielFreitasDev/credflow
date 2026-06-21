@@ -5,6 +5,7 @@ import { Paginated, Payment } from '../lib/types';
 import { currency, dateTime } from '../lib/format';
 import { Column, DataTable } from '../components/DataTable';
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination } from '../components/ui';
+import { ExportCsvButton } from '../components/ExportCsvButton';
 
 const columns: Column<Payment>[] = [
   { key: 'paidAt', header: 'Data', render: (p) => dateTime(p.paidAt) },
@@ -28,7 +29,11 @@ export function PaymentsPage() {
 
   return (
     <div>
-      <PageHeader title="Pagamentos" subtitle="Histórico de recebimentos e baixas" />
+      <PageHeader
+        title="Pagamentos"
+        subtitle="Histórico de recebimentos e baixas"
+        actions={<ExportCsvButton path="/reports/payments.csv" filename="pagamentos.csv" />}
+      />
       <div className="card">
         {isLoading ? (
           <LoadingState />

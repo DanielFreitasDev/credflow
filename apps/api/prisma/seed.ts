@@ -16,8 +16,13 @@ import { DEFAULT_POLICY, evaluateCredit } from '../src/domain/finance/credit-pol
 import { centsToDecimal, reaisToCents } from '../src/domain/finance/money';
 import { addMonths, daysBetween, startOfDay } from '../src/common/utils/date.util';
 import { buildSequentialNumber } from '../src/common/utils/sequence.util';
+import { blindIndexWithKey, encryptWithKey, last4 } from '../src/common/crypto/pii.util';
 
 const prisma = new PrismaClient();
+
+// Same AES-256-GCM key the API uses, so seeded documents are encrypted at rest
+// and the blind index matches what the running app computes.
+const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY ?? '', 'base64');
 
 const hash = (p: string) => argon2.hash(p, { type: argon2.argon2id });
 const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
@@ -80,15 +85,18 @@ const CUSTOMERS: CustomerSeed[] = [
 async function seedCustomers(creatorId: string) {
   const created: { id: string; type: CustomerType; income: number; score: number; name: string }[] = [];
   for (const c of CUSTOMERS) {
+    const documentHash = blindIndexWithKey(ENCRYPTION_KEY, c.document);
     const customer = await prisma.customer.upsert({
-      where: { document: c.document },
+      where: { documentHash },
       update: { internalScore: c.internalScore, monthlyIncome: c.monthlyIncome },
       create: {
         type: c.type,
         status: 'ACTIVE',
         name: c.name,
         tradeName: c.tradeName,
-        document: c.document,
+        document: encryptWithKey(ENCRYPTION_KEY, c.document),
+        documentHash,
+        documentLast4: last4(c.document),
         email: c.email,
         phone: c.phone,
         birthDate: c.birthDate ? new Date(c.birthDate) : null,
@@ -324,6 +332,11 @@ async function seedStandaloneProposals(customers: { id: string }[], analystId: s
 
 async function main() {
   console.log('🌱 Seeding CredFlow...');
+  if (ENCRYPTION_KEY.length !== 32) {
+    throw new Error(
+      'ENCRYPTION_KEY must decode to 32 bytes (base64) to seed encrypted documents — set it in your environment.',
+    );
+  }
   const users = await seedUsers();
   const customers = await seedCustomers(users[Role.ADMIN].id);
 

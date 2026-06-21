@@ -106,6 +106,20 @@ export class AnalysisService {
       );
     }
 
+    // The approved amount is later disbursed/contracted, so it cannot exceed the
+    // requested amount or be non-positive when approving.
+    if (dto.decision === 'APPROVED' && dto.approvedAmount != null) {
+      const requested = Number(proposal.requestedAmount);
+      if (dto.approvedAmount <= 0) {
+        throw new BadRequestException('approvedAmount must be greater than zero');
+      }
+      if (dto.approvedAmount > requested) {
+        throw new BadRequestException(
+          `approvedAmount (R$ ${dto.approvedAmount.toFixed(2)}) cannot exceed the requested amount (R$ ${requested.toFixed(2)})`,
+        );
+      }
+    }
+
     const customer = proposal.customer;
     const ageYears = customer.birthDate ? yearsBetween(customer.birthDate, new Date()) : undefined;
     // Compute score/band for the record even on a manual decision.

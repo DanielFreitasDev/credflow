@@ -161,6 +161,68 @@ export function computeCet(
   return { monthly, annual };
 }
 
+export interface ContractCostingInput {
+  /** Cash released to the customer (option A: the approved amount), cents. */
+  approvedCents: number;
+  /** Originally requested amount, used to scale IOF proportionally, cents. */
+  requestedCents: number;
+  /** IOF the proposal computed (on the requested amount), cents. */
+  proposalIofCents: number;
+  /** Opening fee (TAC) agreed on the proposal — kept as an absolute value, cents. */
+  tacCents: number;
+  monthlyRate: number;
+  termMonths: number;
+  amortization: AmortizationType;
+}
+
+export interface ContractCosting {
+  approvedCents: number;
+  iofCents: number;
+  tacCents: number;
+  financedCents: number;
+  schedule: ScheduleEntry[];
+  totalAmountCents: number;
+  totalInterestCents: number;
+  cetMonthly: number;
+  cetAnnual: number;
+}
+
+/**
+ * Re-derives a contract's financial terms from the **approved** amount so the
+ * contract honours the credit decision instead of the originally requested
+ * value. IOF scales proportionally to the approved/requested ratio (it is a
+ * principal- and term-based tax); TAC is preserved as agreed. When the approved
+ * amount equals the requested one the result is identical to the proposal, so
+ * the normal flow is unchanged.
+ */
+export function computeContractCosting(input: ContractCostingInput): ContractCosting {
+  if (input.approvedCents <= 0) throw new Error('approvedCents must be > 0');
+  const iofCents =
+    input.approvedCents === input.requestedCents || input.requestedCents <= 0
+      ? input.proposalIofCents
+      : roundCents((input.proposalIofCents * input.approvedCents) / input.requestedCents);
+  const financedCents = input.approvedCents + iofCents + input.tacCents;
+  const sim = simulate({
+    principalCents: financedCents,
+    monthlyRate: input.monthlyRate,
+    termMonths: input.termMonths,
+    amortization: input.amortization,
+  });
+  // CET equates the cash released (approved) to the installment stream.
+  const cet = computeCet(input.approvedCents, sim.schedule.map((s) => s.amount));
+  return {
+    approvedCents: input.approvedCents,
+    iofCents,
+    tacCents: input.tacCents,
+    financedCents,
+    schedule: sim.schedule,
+    totalAmountCents: sim.totalAmountCents,
+    totalInterestCents: sim.totalInterestCents,
+    cetMonthly: cet.monthly,
+    cetAnnual: cet.annual,
+  };
+}
+
 export interface LateCharges {
   fineCents: number; // multa (one-time)
   interestCents: number; // juros de mora (pro-rata daily)
@@ -188,5 +250,70 @@ export function computeLateCharges(
     fineCents,
     interestCents,
     totalCents: outstandingCents + fineCents + interestCents,
+  };
+}
+
+export interface OutstandingInput {
+  /** Original installment value (principal + interest), cents. */
+  amountDueCents: number;
+  /** Base amount already settled toward the installment value, cents. */
+  amountPaidCents: number;
+  /** Fine (multa) already paid on this installment, cents. */
+  lateFeePaidCents: number;
+  /** Arrears interest (mora) already paid on this installment, cents. */
+  lateInterestPaidCents: number;
+  daysLate: number;
+  fineRate: number;
+  monthlyInterestRate: number;
+}
+
+export interface OutstandingState {
+  /** Base still owed (installment value minus base already paid), cents. */
+  baseOutstandingCents: number;
+  /** Fine still owed after crediting fine already paid, cents. */
+  fineOutstandingCents: number;
+  /** Arrears interest still owed after crediting mora already paid, cents. */
+  interestOutstandingCents: number;
+  /** base + fine + arrears interest still owed, cents. */
+  totalOutstandingCents: number;
+  daysLate: number;
+}
+
+/**
+ * Remaining balance of an overdue installment, **crediting charges already paid**.
+ *
+ * Late charges accrue on the base still outstanding (`computeLateCharges`), and
+ * any fine/mora the customer has already settled (`lateFeePaidCents` /
+ * `lateInterestPaidCents`) is subtracted from what is still owed. This is the
+ * single source of truth shared by the payment waterfall, the charge preview,
+ * the collections case total and the dashboard — so a partial payment toward
+ * mora/fine is never charged twice.
+ */
+export function computeOutstanding(input: OutstandingInput): OutstandingState {
+  const baseOutstandingCents = Math.max(0, input.amountDueCents - input.amountPaidCents);
+  if (baseOutstandingCents <= 0 || input.daysLate <= 0) {
+    return {
+      baseOutstandingCents,
+      fineOutstandingCents: 0,
+      interestOutstandingCents: 0,
+      totalOutstandingCents: baseOutstandingCents,
+      daysLate: Math.max(0, input.daysLate),
+    };
+  }
+  const gross = computeLateCharges(
+    baseOutstandingCents,
+    input.daysLate,
+    input.fineRate,
+    input.monthlyInterestRate,
+  );
+  const fineOutstandingCents = Math.max(0, gross.fineCents - input.lateFeePaidCents);
+  const interestOutstandingCents = Math.max(0, gross.interestCents - input.lateInterestPaidCents);
+  return {
+    baseOutstandingCents,
+    fineOutstandingCents,
+    interestOutstandingCents,
+    totalOutstandingCents:
+      baseOutstandingCents + fineOutstandingCents + interestOutstandingCents,
+    daysLate: input.daysLate,
   };
 }

@@ -284,7 +284,7 @@ Senhas dos perfis no seed: `gerente@credflow.dev / Gerente@123`, `analista@credf
 ## Segurança (OWASP)
 
 - **A01 Broken Access Control** — `JwtAuthGuard` global + `RolesGuard` por papel; rotas públicas explícitas com `@Public()`.
-- **A02 Cryptographic Failures** — Argon2id para senhas; **AES-256-GCM** para PII sensível (ex.: nº de documentos), com chave validada no boot.
+- **A02 Cryptographic Failures** — Argon2id para senhas; **AES-256-GCM** para PII sensível em repouso (CPF/CNPJ do cliente e nº de documentos), com **blind index** determinístico para unicidade/busca e chave validada no boot.
 - **A03 Injection** — Prisma (consultas parametrizadas) + `ValidationPipe` (whitelist, `forbidNonWhitelisted`).
 - **A04 Insecure Design** — máquinas de estado, transações no banco, dinheiro em centavos.
 - **A05 Misconfiguration** — Helmet, CORS restrito por env, validação fail-fast de variáveis.

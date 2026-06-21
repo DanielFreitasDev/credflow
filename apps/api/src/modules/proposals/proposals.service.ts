@@ -11,6 +11,7 @@ import { buildSequentialNumber, retryOnUniqueViolation } from '../../common/util
 import { computeCet, simulate } from '../../domain/finance/finance';
 import { estimateIofCents } from '../../domain/finance/fees';
 import { centsToDecimal, centsToReais, reaisToCents } from '../../domain/finance/money';
+import { EncryptionService } from '../../common/crypto/encryption.service';
 import {
   CreateProposalDto,
   ProposalQueryDto,
@@ -31,6 +32,7 @@ export class ProposalsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly encryption: EncryptionService,
   ) {}
 
   /** Core math shared by simulate() and create(). Works in integer cents. */
@@ -175,6 +177,7 @@ export class ProposalsService {
       }),
       this.prisma.creditProposal.count({ where }),
     ]);
+    data.forEach((p) => this.encryption.decryptDocumentField(p.customer));
     return paginatedResponse(data, total, page, pageSize);
   }
 
@@ -192,6 +195,7 @@ export class ProposalsService {
       },
     });
     if (!proposal) throw new NotFoundException('Proposal not found');
+    this.encryption.decryptDocumentField(proposal.customer);
 
     // Recompute the amortization schedule for display from stored terms.
     const sim = simulate({
@@ -231,14 +235,19 @@ export class ProposalsService {
     return this.changeStatus(id, ProposalStatus.CANCELLED, actorId, reason ?? 'Cancelled');
   }
 
-  /** Validated state-machine transition with event + audit. */
+  /**
+   * Validated state-machine transition with event + audit. Accepts a Prisma
+   * transaction client so callers (e.g. contract creation) can make the status
+   * change atomic with their own writes.
+   */
   async changeStatus(
     id: string,
     toStatus: ProposalStatus,
     actorId?: string,
     reason?: string,
+    client: Prisma.TransactionClient = this.prisma,
   ) {
-    const proposal = await this.prisma.creditProposal.findUnique({ where: { id } });
+    const proposal = await client.creditProposal.findUnique({ where: { id } });
     if (!proposal) throw new NotFoundException('Proposal not found');
 
     if (proposal.status === toStatus) return proposal;
@@ -251,7 +260,7 @@ export class ProposalsService {
     const isDecision = (['APPROVED', 'REJECTED', 'CONTRACTED', 'CANCELLED'] as ProposalStatus[]).includes(
       toStatus,
     );
-    const updated = await this.prisma.creditProposal.update({
+    const updated = await client.creditProposal.update({
       where: { id },
       data: {
         status: toStatus,
