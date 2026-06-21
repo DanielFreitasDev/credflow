@@ -1,33 +1,42 @@
-# CredFlow — Plataforma de Gestão de Crédito e Empréstimos
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/brand/credflow_logo_horizontal_dark_transparent.svg">
+  <img alt="CredFlow — Plataforma de Gestão de Crédito e Empréstimos" src="apps/web/public/brand/credflow_logo_horizontal_light.svg" width="440">
+</picture>
+
+**Plataforma de Gestão de Crédito e Empréstimos**
 
 Sistema completo, modular e pronto para produção para empresas que oferecem crédito, financiamento ou empréstimos. Cobre todo o ciclo de vida: **cliente → proposta → análise de crédito → contrato → parcelas → pagamentos → cobrança/renegociação**, com dashboard, RBAC, auditoria e um motor financeiro testado.
+
+</div>
 
 > **TL;DR** — com Docker: `cp .env.example .env && docker compose up --build`. Acesse `http://localhost:5173` e entre com `admin@credflow.dev` / `Admin@123456`.
 
 ---
 
-## Sumário
+## 📋 Sumário
 
-- [Funcionalidades](#funcionalidades)
-- [Stack e justificativa](#stack-e-justificativa)
-- [Arquitetura](#arquitetura)
-- [Estrutura do projeto](#estrutura-do-projeto)
-- [Como rodar (Docker)](#como-rodar-com-docker--recomendado)
-- [Como rodar (local, sem Docker)](#como-rodar-localmente-sem-docker)
-- [Variáveis de ambiente](#variáveis-de-ambiente)
-- [Banco de dados, migrations e seed](#banco-de-dados-migrations-e-seed)
-- [Testes](#testes)
-- [API e documentação (Swagger)](#api-e-documentação-swagger)
-- [Perfis e permissões (RBAC)](#perfis-e-permissões-rbac)
-- [Motor financeiro](#motor-financeiro)
-- [Segurança (OWASP)](#segurança-owasp)
-- [Dados de demonstração](#dados-de-demonstração)
-- [Guia de deploy](#guia-de-deploy)
-- [Solução de problemas](#solução-de-problemas)
+- [✨ Funcionalidades](#-funcionalidades)
+- [🧰 Stack e justificativa](#-stack-e-justificativa)
+- [🧱 Arquitetura](#-arquitetura)
+- [📁 Estrutura do projeto](#-estrutura-do-projeto)
+- [🐳 Como rodar (Docker)](#-como-rodar-com-docker--recomendado)
+- [💻 Como rodar (local, sem Docker)](#-como-rodar-localmente-sem-docker)
+- [🔧 Variáveis de ambiente](#-variáveis-de-ambiente)
+- [💾 Banco de dados, migrations e seed](#-banco-de-dados-migrations-e-seed)
+- [🧪 Testes](#-testes)
+- [📚 API e documentação (Swagger)](#-api-e-documentação-swagger)
+- [🔐 Perfis e permissões (RBAC)](#-perfis-e-permissões-rbac)
+- [💰 Motor financeiro](#-motor-financeiro)
+- [🔒 Segurança (OWASP)](#-segurança-owasp)
+- [🌱 Dados de demonstração](#-dados-de-demonstração)
+- [🚀 Guia de deploy](#-guia-de-deploy)
+- [🩺 Solução de problemas](#-solução-de-problemas)
 
 ---
 
-## Funcionalidades
+## ✨ Funcionalidades
 
 | Módulo | Destaques |
 |---|---|
@@ -42,7 +51,7 @@ Sistema completo, modular e pronto para produção para empresas que oferecem cr
 
 ---
 
-## Stack e justificativa
+## 🧰 Stack e justificativa
 
 | Camada | Tecnologia | Por quê |
 |---|---|---|
@@ -59,20 +68,20 @@ Sistema completo, modular e pronto para produção para empresas que oferecem cr
 
 ---
 
-## Arquitetura
+## 🧱 Arquitetura
 
 Clean Architecture / camadas, com o domínio financeiro **puro** (sem framework) e testável isoladamente:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Interface        Controllers REST · Guards · Filtros · DTOs  │  (NestJS / React)
+│ Interface        Controllers REST · Guards · Filtros · DTOs │  (NestJS / React)
 ├─────────────────────────────────────────────────────────────┤
-│  Aplicação        Services (casos de uso) · orquestração      │
+│ Aplicação        Services (casos de uso) · orquestração     │
 ├─────────────────────────────────────────────────────────────┤
-│  Domínio          finance/ (Price·SAC·Simples, CET/IRR,       │  ← puro, 100% testado
-│                   mora) · credit-policy (motor de regras)     │
+│ Domínio          finance/ (Price·SAC·Simples, CET/IRR,      │  ← puro, 100% testado
+│                  mora) · credit-policy (motor de regras)    │
 ├─────────────────────────────────────────────────────────────┤
-│  Infraestrutura   Prisma · JWT · Argon2 · AES-GCM · Auditoria │
+│ Infraestrutura   Prisma · JWT · Argon2 · AES-GCM · Auditoria│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -88,7 +97,7 @@ Cada entidade tem **máquina de estados explícita** e operações sensíveis ge
 
 ---
 
-## Estrutura do projeto
+## 📁 Estrutura do projeto
 
 ```
 credflow/
@@ -116,7 +125,7 @@ credflow/
 
 ---
 
-## Como rodar com Docker — recomendado
+## 🐳 Como rodar com Docker — recomendado
 
 Pré-requisitos: **Docker** e **Docker Compose**.
 
@@ -147,7 +156,7 @@ Login inicial: **`admin@credflow.dev` / `Admin@123456`**.
 
 ---
 
-## Como rodar localmente (sem Docker)
+## 💻 Como rodar localmente (sem Docker)
 
 Pré-requisitos: **Node 20+** e um **PostgreSQL** acessível.
 
@@ -178,7 +187,7 @@ npm run dev                         # http://localhost:5173
 
 ---
 
-## Variáveis de ambiente
+## 🔧 Variáveis de ambiente
 
 | Variável | Descrição | Exemplo / padrão |
 |---|---|---|
@@ -200,7 +209,7 @@ npm run dev                         # http://localhost:5173
 
 ---
 
-## Banco de dados, migrations e seed
+## 💾 Banco de dados, migrations e seed
 
 - **Schema:** `apps/api/prisma/schema.prisma` (17 modelos, enums nativos).
 - **Migration inicial:** `apps/api/prisma/migrations/0_init/migration.sql` — gerada a partir do schema; aplique com `npx prisma migrate deploy`.
@@ -210,7 +219,7 @@ npm run dev                         # http://localhost:5173
 
 ---
 
-## Testes
+## 🧪 Testes
 
 ```bash
 cd apps/api
@@ -228,7 +237,7 @@ Frontend: `cd apps/web && npm run typecheck` (e `npm run build` para validar o b
 
 ---
 
-## API e documentação (Swagger)
+## 📚 API e documentação (Swagger)
 
 Documentação interativa em **`http://localhost:3333/api/docs`** (autenticação Bearer persistida).
 
@@ -248,7 +257,7 @@ Principais grupos de rotas (prefixo `/api`):
 
 ---
 
-## Perfis e permissões (RBAC)
+## 🔐 Perfis e permissões (RBAC)
 
 `ADMIN` tem acesso total. Demais perfis (resumo das operações de escrita):
 
@@ -269,7 +278,7 @@ Senhas dos perfis no seed: `gerente@credflow.dev / Gerente@123`, `analista@credf
 
 ---
 
-## Motor financeiro
+## 💰 Motor financeiro
 
 - **Tabela Price** (parcela fixa): `PMT = PV · i / (1 − (1+i)⁻ⁿ)`.
 - **SAC**: amortização constante, parcelas decrescentes.
@@ -281,7 +290,7 @@ Senhas dos perfis no seed: `gerente@credflow.dev / Gerente@123`, `analista@credf
 
 ---
 
-## Segurança (OWASP)
+## 🔒 Segurança (OWASP)
 
 - **A01 Broken Access Control** — `JwtAuthGuard` global + `RolesGuard` por papel; rotas públicas explícitas com `@Public()`.
 - **A02 Cryptographic Failures** — Argon2id para senhas; **AES-256-GCM** para PII sensível em repouso (CPF/CNPJ do cliente e nº de documentos), com **blind index** determinístico para unicidade/busca e chave validada no boot.
@@ -293,7 +302,7 @@ Senhas dos perfis no seed: `gerente@credflow.dev / Gerente@123`, `analista@credf
 
 ---
 
-## Dados de demonstração
+## 🌱 Dados de demonstração
 
 Após o seed você terá: 5 usuários (um por perfil), 10 clientes (PF/PJ, scores variados),
 propostas em **DRAFT/UNDER_REVIEW/REJECTED**, contratos **ativos**, um **quitado**,
@@ -302,7 +311,7 @@ suficiente para o dashboard exibir números reais.
 
 ---
 
-## Guia de deploy
+## 🚀 Guia de deploy
 
 1. **Banco:** provisione um PostgreSQL gerenciado (RDS, Cloud SQL, Neon, etc.) e configure `DATABASE_URL`.
 2. **Segredos:** gere `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` (`openssl rand -hex 48`) e `ENCRYPTION_KEY` (`openssl rand -base64 32`). **Nunca** use os valores de exemplo em produção.
@@ -313,7 +322,7 @@ suficiente para o dashboard exibir números reais.
 
 ---
 
-## Solução de problemas
+## 🩺 Solução de problemas
 
 | Sintoma | Causa provável / solução |
 |---|---|
