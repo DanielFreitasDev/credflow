@@ -160,7 +160,17 @@ export class PaymentsService {
 
   async list(query: PaymentQueryDto) {
     const { skip, take, page, pageSize } = buildPagination(query);
-    const where: Prisma.PaymentWhereInput = query.contractId ? { contractId: query.contractId } : {};
+    const where: Prisma.PaymentWhereInput = {
+      ...(query.contractId ? { contractId: query.contractId } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { contract: { number: { contains: query.search, mode: 'insensitive' } } },
+              { contract: { customer: { name: { contains: query.search, mode: 'insensitive' } } } },
+            ],
+          }
+        : {}),
+    };
     const [data, total] = await this.prisma.$transaction([
       this.prisma.payment.findMany({
         where,

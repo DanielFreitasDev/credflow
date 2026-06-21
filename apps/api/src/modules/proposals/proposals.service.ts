@@ -157,7 +157,7 @@ export class ProposalsService {
     return proposal;
   }
 
-  async findAll(query: ProposalQueryDto) {
+  async findAll(query: ProposalQueryDto, role?: string) {
     const { skip, take, page, pageSize } = buildPagination(query);
     const where: Prisma.CreditProposalWhereInput = {
       ...(query.status ? { status: query.status } : {}),
@@ -185,11 +185,11 @@ export class ProposalsService {
       }),
       this.prisma.creditProposal.count({ where }),
     ]);
-    data.forEach((p) => this.encryption.decryptDocumentField(p.customer));
+    data.forEach((p) => this.encryption.presentDocumentField(p.customer, role));
     return paginatedResponse(data, total, page, pageSize);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, role?: string) {
     const proposal = await this.prisma.creditProposal.findUnique({
       where: { id },
       include: {
@@ -203,7 +203,7 @@ export class ProposalsService {
       },
     });
     if (!proposal) throw new NotFoundException('Proposal not found');
-    this.encryption.decryptDocumentField(proposal.customer);
+    this.encryption.presentDocumentField(proposal.customer, role);
 
     // Recompute the amortization schedule for display from stored terms.
     const sim = simulate({

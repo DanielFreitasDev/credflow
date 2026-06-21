@@ -35,13 +35,13 @@ export class CustomersController {
 
   @Get()
   @ApiOperation({ summary: 'List customers (filter + paginate)' })
-  findAll(@Query() query: CustomerQueryDto) {
-    return this.customers.findAll(query);
+  findAll(@Query() query: CustomerQueryDto, @CurrentUser('role') role: string) {
+    return this.customers.findAll(query, role);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.customers.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser('role') role: string) {
+    return this.customers.findOne(id, role);
   }
 
   @Get(':id/financial-history')

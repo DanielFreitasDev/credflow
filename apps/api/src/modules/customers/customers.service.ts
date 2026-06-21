@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ContractStatus, Prisma } from '@prisma/client';
+import { ContractStatus, CustomerStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { EncryptionService } from '../../common/crypto/encryption.service';
@@ -11,6 +11,15 @@ import {
   CustomerQueryDto,
   UpdateCustomerDto,
 } from './dto/customer.dto';
+
+// Customer lifecycle transitions. Validated server-side like the proposal and
+// collection-case state machines; a real customer never reverts to PROSPECT.
+const CUSTOMER_STATUS_TRANSITIONS: Record<CustomerStatus, CustomerStatus[]> = {
+  PROSPECT: ['ACTIVE', 'INACTIVE', 'BLOCKED'],
+  ACTIVE: ['INACTIVE', 'BLOCKED'],
+  INACTIVE: ['ACTIVE', 'BLOCKED'],
+  BLOCKED: ['ACTIVE', 'INACTIVE'],
+};
 
 @Injectable()
 export class CustomersService {
@@ -27,13 +36,17 @@ export class CustomersService {
    */
   private decryptCustomer<
     T extends { document?: string | null; documents?: { number: string | null }[] },
-  >(customer: T): T {
-    // Decrypt the primary document and strip the internal blind index via the
-    // single shared helper, so there is one definition of a "safe" customer.
-    this.encryption.decryptDocumentField(customer);
+  >(customer: T, role?: string): T {
+    // Operational roles see the real document; the read-only AUDITOR oversight
+    // role gets a last-4 mask (never raw PII). The blind index is stripped via
+    // the single shared helper, so there is one definition of a "safe" customer.
+    this.encryption.presentDocumentField(customer, role);
     if (customer.documents) {
       for (const doc of customer.documents) {
-        if (doc.number) doc.number = this.encryption.safeDecrypt(doc.number);
+        if (doc.number) {
+          const plain = this.encryption.safeDecrypt(doc.number);
+          doc.number = role === 'AUDITOR' ? this.encryption.maskDocument(plain) : plain;
+        }
       }
     }
     return customer;
@@ -98,7 +111,7 @@ export class CustomersService {
     return this.decryptCustomer(customer);
   }
 
-  async findAll(query: CustomerQueryDto) {
+  async findAll(query: CustomerQueryDto, role?: string) {
     const { skip, take, page, pageSize } = buildPagination(query);
     const where: Prisma.CustomerWhereInput = {
       ...(query.type ? { type: query.type } : {}),
@@ -129,10 +142,10 @@ export class CustomersService {
       }),
       this.prisma.customer.count({ where }),
     ]);
-    return paginatedResponse(data.map((c) => this.decryptCustomer(c)), total, page, pageSize);
+    return paginatedResponse(data.map((c) => this.decryptCustomer(c, role)), total, page, pageSize);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, role?: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id },
       include: {
@@ -144,7 +157,7 @@ export class CustomersService {
       },
     });
     if (!customer) throw new NotFoundException('Customer not found');
-    return this.decryptCustomer(customer);
+    return this.decryptCustomer(customer, role);
   }
 
   /** Aggregated financial history used in the customer 360 view. */
@@ -257,8 +270,11 @@ export class CustomersService {
     return this.decryptCustomer(customer);
   }
 
-  async updateStatus(id: string, status: 'PROSPECT' | 'ACTIVE' | 'INACTIVE' | 'BLOCKED', reason?: string, actorId?: string) {
+  async updateStatus(id: string, status: CustomerStatus, reason?: string, actorId?: string) {
     const before = await this.ensureExists(id);
+    if (before.status !== status && !CUSTOMER_STATUS_TRANSITIONS[before.status].includes(status)) {
+      throw new BadRequestException(`Invalid customer status transition: ${before.status} -> ${status}`);
+    }
     const customer = await this.prisma.customer.update({ where: { id }, data: { status } });
     await this.audit.record({
       userId: actorId,

@@ -100,7 +100,7 @@ export function CustomersPage() {
         ) : (
           <>
             <div className={isFetching ? 'opacity-60 transition' : ''}>
-              <DataTable columns={columns} data={data.data} onRowClick={(c) => navigate(`/customers/${c.id}`)} />
+              <DataTable columns={columns} data={data.data} onRowClick={(c) => navigate(`/customers/${c.id}`)} rowLabel={(c) => `Abrir cliente ${c.name}`} />
             </div>
             <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} />
           </>

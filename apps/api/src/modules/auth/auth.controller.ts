@@ -40,8 +40,8 @@ export class AuthController {
   @HttpCode(204)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Revoke a refresh token (logout)' })
-  async logout(@Body() dto: RefreshDto): Promise<void> {
-    await this.auth.logout(dto.refreshToken);
+  async logout(@CurrentUser('id') userId: string, @Body() dto: RefreshDto): Promise<void> {
+    await this.auth.logout(userId, dto.refreshToken);
   }
 
   @Get('me')

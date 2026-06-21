@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useId, useRef } from 'react';
 import clsx from 'clsx';
 import { Loader2, Inbox, AlertTriangle, X } from 'lucide-react';
 
@@ -129,6 +129,9 @@ export function PageHeader({
   );
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Modal({
   open,
   onClose,
@@ -142,20 +145,145 @@ export function Modal({
   children: ReactNode;
   size?: 'md' | 'lg' | 'xl';
 }) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  // Lock body scroll + remember the element that had focus before opening.
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      // Restore focus to whatever was focused before the modal opened.
+      previouslyFocused.current?.focus?.();
+    };
+  }, [open]);
+
+  // Move focus inside the dialog when it opens.
+  useEffect(() => {
+    if (!open) return;
+    const node = dialogRef.current;
+    if (!node) return;
+    const first = node.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+    (first ?? node).focus();
+  }, [open]);
+
+  // Close on Esc and trap Tab within the dialog.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const node = dialogRef.current;
+      if (!node) return;
+      const focusable = Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+        (el) => el.offsetParent !== null || el === document.activeElement,
+      );
+      if (focusable.length === 0) {
+        e.preventDefault();
+        node.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === node)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
   const widths = { md: 'max-w-md', lg: 'max-w-2xl', xl: 'max-w-4xl' };
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 pt-16 dark:bg-black/60">
-      <div className={clsx('card w-full p-6', widths[size])} onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 pt-16 dark:bg-black/60"
+      onMouseDown={(e) => {
+        // Close only when the backdrop itself is pressed, not when a press inside bubbles up.
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={clsx('card w-full p-6 focus:outline-none', widths[size])}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{title}</h3>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:text-slate-500 dark:hover:bg-slate-800">
+          <h3 id={titleId} className="text-lg font-semibold text-slate-900 dark:text-slate-50">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:text-slate-500 dark:hover:bg-slate-800"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
         {children}
       </div>
     </div>
+  );
+}
+
+/** A styled confirmation dialog (replaces native window.confirm), built on Modal. */
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel = 'Confirmar',
+  cancelLabel = 'Cancelar',
+  tone = 'danger',
+  loading = false,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  message: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: 'danger' | 'primary';
+  loading?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={title}>
+      <div className="space-y-5">
+        <p className="text-sm text-slate-600 dark:text-slate-300">{message}</p>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            className={tone === 'danger' ? 'btn-danger' : 'btn-primary'}
+            onClick={onConfirm}
+            disabled={loading}
+          >
+            {loading && <Spinner className="h-4 w-4" />}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

@@ -127,7 +127,27 @@ export class AuthService {
 
     const tokenHash = this.hashToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+    if (!stored) throw new UnauthorizedException('Refresh token is no longer valid');
+
+    // Reuse detection: a token that was already rotated/revoked is being
+    // presented again — treat it as theft and revoke the entire token family so
+    // a stolen refresh token cannot outlive the legitimate session.
+    if (stored.revokedAt) {
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: stored.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await this.audit.record({
+        userId: stored.userId,
+        action: 'REFRESH_REUSE_DETECTED',
+        entity: 'User',
+        entityId: stored.userId,
+        ip: meta.ip,
+      });
+      throw new UnauthorizedException('Refresh token reuse detected; all sessions were revoked');
+    }
+
+    if (stored.expiresAt < new Date()) {
       throw new UnauthorizedException('Refresh token is no longer valid');
     }
 
@@ -142,10 +162,12 @@ export class AuthService {
     return this.issueTokens(user, meta);
   }
 
-  async logout(refreshToken: string): Promise<void> {
+  async logout(userId: string, refreshToken: string): Promise<void> {
     const tokenHash = this.hashToken(refreshToken);
+    // Scope the revocation to the caller's own token so a user cannot revoke a
+    // token they do not own.
     await this.prisma.refreshToken.updateMany({
-      where: { tokenHash, revokedAt: null },
+      where: { tokenHash, userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
   }

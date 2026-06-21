@@ -10,7 +10,7 @@ import {
   Role,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { computeCet, computeLateCharges, simulate } from '../src/domain/finance/finance';
+import { clampCet, computeCet, computeLateCharges, simulate } from '../src/domain/finance/finance';
 import { estimateIofCents } from '../src/domain/finance/fees';
 import { DEFAULT_POLICY, evaluateCredit } from '../src/domain/finance/credit-policy';
 import { centsToDecimal, reaisToCents } from '../src/domain/finance/money';
@@ -162,8 +162,8 @@ async function createContractedLoan(o: LoanOpts) {
       installmentAmount: centsToDecimal(sim.firstInstallmentCents),
       totalAmount: centsToDecimal(sim.totalAmountCents),
       totalInterest: centsToDecimal(sim.totalInterestCents),
-      cetMonthly: round6(cet.monthly),
-      cetAnnual: round6(cet.annual),
+      cetMonthly: round6(clampCet(cet.monthly)),
+      cetAnnual: round6(clampCet(cet.annual)),
       createdById: o.analystId,
       decidedAt: new Date(),
       events: { create: [{ toStatus: 'DRAFT', changedById: o.analystId }, { fromStatus: 'UNDER_REVIEW', toStatus: 'APPROVED', changedById: o.analystId }, { fromStatus: 'APPROVED', toStatus: 'CONTRACTED', changedById: o.managerId }] },
@@ -214,7 +214,7 @@ async function createContractedLoan(o: LoanOpts) {
       totalInterest: centsToDecimal(sim.totalInterestCents),
       iofAmount: centsToDecimal(iofCents),
       tacAmount: centsToDecimal(tacCents),
-      cetAnnual: round6(cet.annual),
+      cetAnnual: round6(clampCet(cet.annual)),
       lateFeeRate: 0.02,
       lateInterestRate: 0.01,
       startDate,
@@ -319,8 +319,8 @@ async function seedStandaloneProposals(customers: { id: string }[], analystId: s
         installmentAmount: centsToDecimal(sim.firstInstallmentCents),
         totalAmount: centsToDecimal(sim.totalAmountCents),
         totalInterest: centsToDecimal(sim.totalInterestCents),
-        cetMonthly: round6(cet.monthly),
-        cetAnnual: round6(cet.annual),
+        cetMonthly: round6(clampCet(cet.monthly)),
+        cetAnnual: round6(clampCet(cet.annual)),
         createdById: analystId,
         decidedAt: sp.status === 'REJECTED' ? new Date() : null,
         events: { create: { toStatus: sp.status, changedById: analystId } },

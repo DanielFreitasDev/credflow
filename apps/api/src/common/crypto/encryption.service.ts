@@ -38,19 +38,45 @@ export class EncryptionService {
     }
   }
 
+  /** Masks all but the last 4 digits of a document-like value (CPF/CNPJ/RG). */
+  maskDocument(value: string | null | undefined): string | null {
+    if (value == null) return null;
+    const digits = value.replace(/\D/g, '');
+    const base = digits.length >= 4 ? digits : value;
+    if (base.length <= 4) return '*'.repeat(base.length);
+    return '*'.repeat(base.length - 4) + base.slice(-4);
+  }
+
+  /**
+   * Role-aware presentation of an embedded customer's `document` in place.
+   * Operational roles receive the real decrypted value; the read-only AUDITOR
+   * oversight role receives a last-4 mask (it never needs raw PII). The internal
+   * `documentHash` blind index is always stripped. Pass no role to decrypt
+   * without masking (internal / write paths).
+   */
+  presentDocumentField(
+    obj: { document?: string | null; documentHash?: unknown } | null | undefined,
+    role?: string,
+  ): void {
+    if (!obj) return;
+    if (obj.document != null) {
+      const plain = this.safeDecrypt(obj.document) ?? obj.document;
+      obj.document = role === 'AUDITOR' ? this.maskDocument(plain) : plain;
+    }
+    delete obj.documentHash;
+  }
+
   /**
    * Prepares an embedded customer for an API response in place: decrypts the
    * `document` field (tolerating legacy plaintext) and strips the internal
    * `documentHash` blind index, so modules that embed a customer leak neither
    * ciphertext nor the key-bound correlator. Defense in depth on top of the
-   * global Prisma `omit` for `documentHash`.
+   * global Prisma `omit` for `documentHash`. No role-based masking.
    */
   decryptDocumentField(
     obj: { document?: string | null; documentHash?: unknown } | null | undefined,
   ): void {
-    if (!obj) return;
-    if (obj.document != null) obj.document = this.safeDecrypt(obj.document) ?? obj.document;
-    delete obj.documentHash;
+    this.presentDocumentField(obj, undefined);
   }
 
   /** Deterministic, non-reversible hash — useful for blind-indexing/lookups. */

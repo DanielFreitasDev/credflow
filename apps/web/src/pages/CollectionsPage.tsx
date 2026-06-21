@@ -79,7 +79,7 @@ export function CollectionsPage() {
           <EmptyState title="Nenhum caso de cobrança" hint="Execute a régua para identificar parcelas vencidas." />
         ) : (
           <>
-            <DataTable columns={columns} data={data.data} onRowClick={(c) => navigate(`/collections/${c.id}`)} />
+            <DataTable columns={columns} data={data.data} onRowClick={(c) => navigate(`/collections/${c.id}`)} rowLabel={(c) => `Abrir cobrança do contrato ${c.contract?.number ?? ''}`} />
             <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} />
           </>
         )}

@@ -151,10 +151,15 @@ export function computeMonthlyIrr(releasedCents: number, payments: number[]): nu
   const HIGH_CAP = 1e6;
   while (npv(high) > 0 && high < HIGH_CAP) high *= 2;
 
+  // Relative tolerance: NPV scales with `releasedCents`, so an absolute
+  // 1e-6-cent threshold never converges for very large principals (it would fall
+  // through to the midpoint). Scaling the tolerance to the released amount makes
+  // the solver converge cleanly at every scale.
+  const tolerance = Math.max(1e-6, releasedCents * 1e-9);
   for (let iter = 0; iter < 300; iter++) {
     const mid = (low + high) / 2;
     const value = npv(mid);
-    if (Math.abs(value) < 1e-6) return mid;
+    if (Math.abs(value) < tolerance) return mid;
     if (value > 0) low = mid;
     else high = mid;
   }
@@ -192,9 +197,27 @@ export function clampCet(value: number): number {
  * cover the period's interest. Such a "loan" is really a balloon and should be
  * rejected at the product boundary rather than silently generated.
  */
+/**
+ * Minimum share of the first installment that must go to principal for a PRICE
+ * schedule to count as genuinely amortizing. The unrounded first-principal
+ * fraction equals (1+i)^-n, so this threshold is scale-independent — it depends
+ * only on the rate and term, not the principal size. At 0.001 it flags grossly
+ * back-loaded high-rate loans (e.g. ≥200%/month) while leaving normal SAC/SIMPLE
+ * schedules within the DTO's rate/term limits untouched.
+ */
+export const MIN_FIRST_PRINCIPAL_FRACTION = 0.001;
+
 export function isNonAmortizing(schedule: ScheduleEntry[]): boolean {
   if (schedule.length <= 1) return false;
-  return schedule.slice(0, -1).some((e) => e.principal <= 0);
+  // Any non-final installment that pays no principal is a balloon.
+  if (schedule.slice(0, -1).some((e) => e.principal <= 0)) return true;
+  // Scale-independent guard: if the first installment amortizes a negligible
+  // fraction of the payment (the payment barely exceeds the period interest),
+  // the schedule is balloon-like regardless of principal size — closing the gap
+  // where the same product was accepted for a large principal but rejected for a
+  // small one purely due to rounding.
+  const first = schedule[0];
+  return first.amount > 0 && first.principal / first.amount < MIN_FIRST_PRINCIPAL_FRACTION;
 }
 
 export interface ContractCostingInput {

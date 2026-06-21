@@ -13,10 +13,13 @@ export function DataTable<T extends { id: string }>({
   columns,
   data,
   onRowClick,
+  rowLabel,
 }: {
   columns: Column<T>[];
   data: T[];
   onRowClick?: (row: T) => void;
+  /** Optional accessible label for each clickable row (e.g. "Abrir cliente João"). */
+  rowLabel?: (row: T) => string;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -41,8 +44,25 @@ export function DataTable<T extends { id: string }>({
           {data.map((row) => (
             <tr
               key={row.id}
-              onClick={() => onRowClick?.(row)}
-              className={clsx('transition', onRowClick && 'cursor-pointer hover:bg-brand-50/40 dark:hover:bg-brand-500/10')}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onRowClick(row);
+                      }
+                    }
+                  : undefined
+              }
+              tabIndex={onRowClick ? 0 : undefined}
+              role={onRowClick ? 'button' : undefined}
+              aria-label={onRowClick ? rowLabel?.(row) : undefined}
+              className={clsx(
+                'transition',
+                onRowClick &&
+                  'cursor-pointer hover:bg-brand-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400 dark:hover:bg-brand-500/10',
+              )}
             >
               {columns.map((c) => (
                 <td

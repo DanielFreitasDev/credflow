@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
 import { api, apiError } from '../lib/api';
 import { Paginated, Payment } from '../lib/types';
 import { currency, dateTime } from '../lib/format';
+import { useDebounce } from '../lib/hooks';
 import { Column, DataTable } from '../components/DataTable';
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination } from '../components/ui';
 import { ExportCsvButton } from '../components/ExportCsvButton';
@@ -21,10 +23,17 @@ const columns: Column<Payment>[] = [
 
 export function PaymentsPage() {
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['payments', page],
-    queryFn: async () => (await api.get<Paginated<Payment>>('/payments', { params: { page, pageSize: 15 } })).data,
+  const { data, isLoading, error, isFetching } = useQuery({
+    queryKey: ['payments', page, debouncedSearch],
+    queryFn: async () =>
+      (
+        await api.get<Paginated<Payment>>('/payments', {
+          params: { page, pageSize: 15, search: debouncedSearch || undefined },
+        })
+      ).data,
   });
 
   return (
@@ -35,15 +44,32 @@ export function PaymentsPage() {
         actions={<ExportCsvButton path="/reports/payments.csv" filename="pagamentos.csv" />}
       />
       <div className="card">
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 dark:border-slate-800 p-4">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+            <input
+              className="input pl-9"
+              placeholder="Buscar por contrato ou cliente..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+        </div>
+
         {isLoading ? (
           <LoadingState />
         ) : error ? (
           <ErrorState message={apiError(error)} />
         ) : !data || data.data.length === 0 ? (
-          <EmptyState title="Nenhum pagamento registrado" hint="Registre pagamentos a partir de um contrato." />
+          <EmptyState title="Nenhum pagamento registrado" hint="Registre pagamentos a partir de um contrato ou ajuste a busca." />
         ) : (
           <>
-            <DataTable columns={columns} data={data.data} />
+            <div className={isFetching ? 'opacity-60 transition' : ''}>
+              <DataTable columns={columns} data={data.data} />
+            </div>
             <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} />
           </>
         )}

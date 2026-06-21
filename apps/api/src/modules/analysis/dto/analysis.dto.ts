@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class DecideDto {
   @ApiProperty({ enum: ['APPROVED', 'REJECTED'] })
@@ -14,5 +14,6 @@ export class DecideDto {
 
   @ApiProperty({ description: 'Justification recorded in the audit trail' })
   @IsString()
+  @MaxLength(1000)
   reason!: string;
 }

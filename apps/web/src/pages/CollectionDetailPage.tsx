@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, MessageSquarePlus, HandCoins } from 'lucide-react';
@@ -7,11 +10,28 @@ import { useToast } from '../lib/toast';
 import { useAuth } from '../lib/auth';
 import { CollectionCase } from '../lib/types';
 import { collectionStatusLabel, currency, date, dateTime } from '../lib/format';
-import { ErrorState, LoadingState, PageHeader, StatusBadge, Stat } from '../components/ui';
+import { ConfirmDialog, ErrorState, LoadingState, PageHeader, Spinner, StatusBadge, Stat } from '../components/ui';
 
 const CHANNELS = ['PHONE', 'EMAIL', 'SMS', 'WHATSAPP', 'LETTER', 'VISIT', 'SYSTEM'];
 // Irreversible case outcomes — confirm before applying.
 const TERMINAL_STATUSES = ['WRITTEN_OFF', 'RESOLVED'];
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+const interactionSchema = z.object({
+  channel: z.string().min(1, 'Selecione um canal'),
+  notes: z.string().trim().min(1, 'Descreva a interação'),
+});
+type InteractionValues = z.infer<typeof interactionSchema>;
+
+const promiseSchema = z.object({
+  amount: z.coerce.number({ invalid_type_error: 'Informe um valor' }).positive('O valor deve ser maior que zero'),
+  promisedDate: z
+    .string()
+    .min(1, 'Informe a data')
+    .refine((d) => d >= today(), 'A data deve ser hoje ou futura'),
+});
+type PromiseValues = z.infer<typeof promiseSchema>;
 
 export function CollectionDetailPage() {
   const { id } = useParams();
@@ -25,23 +45,31 @@ export function CollectionDetailPage() {
     queryFn: async () => (await api.get<CollectionCase>(`/collections/${id}`)).data,
   });
 
-  const [channel, setChannel] = useState('PHONE');
-  const [notes, setNotes] = useState('');
-  const [promiseAmount, setPromiseAmount] = useState(0);
-  const [promiseDate, setPromiseDate] = useState(new Date().toISOString().slice(0, 10));
+  // Pending terminal status awaiting confirmation.
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+
+  const interactionForm = useForm<InteractionValues>({
+    resolver: zodResolver(interactionSchema),
+    defaultValues: { channel: 'PHONE', notes: '' },
+  });
+
+  const promiseForm = useForm<PromiseValues>({
+    resolver: zodResolver(promiseSchema),
+    defaultValues: { amount: 0, promisedDate: today() },
+  });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['collection', id] });
 
   const interactionMut = useMutation({
-    mutationFn: async () => api.post(`/collections/${id}/interactions`, { channel, notes }),
-    onSuccess: () => { setNotes(''); toast.success('Interação registrada'); invalidate(); },
+    mutationFn: async (v: InteractionValues) => api.post(`/collections/${id}/interactions`, v),
+    onSuccess: () => { interactionForm.reset({ channel: 'PHONE', notes: '' }); toast.success('Interação registrada'); invalidate(); },
     onError: (e) => toast.error(apiError(e)),
   });
 
   const promiseMut = useMutation({
-    mutationFn: async () =>
-      api.post(`/collections/${id}/promises`, { amount: promiseAmount, promisedDate: new Date(promiseDate).toISOString() }),
-    onSuccess: () => { setPromiseAmount(0); toast.success('Promessa registrada'); invalidate(); },
+    mutationFn: async (v: PromiseValues) =>
+      api.post(`/collections/${id}/promises`, { amount: v.amount, promisedDate: new Date(v.promisedDate).toISOString() }),
+    onSuccess: () => { promiseForm.reset({ amount: 0, promisedDate: today() }); toast.success('Promessa registrada'); invalidate(); },
     onError: (e) => toast.error(apiError(e)),
   });
 
@@ -64,18 +92,12 @@ export function CollectionDetailPage() {
   const canAct = hasRole('OPERATOR', 'MANAGER');
   const canChangeStatus = hasRole('MANAGER');
 
-  const addInteraction = () => {
-    if (!notes.trim()) return;
-    interactionMut.mutate();
-  };
-
-  const addPromise = () => {
-    if (promiseAmount <= 0) return;
-    promiseMut.mutate();
-  };
-
   const changeStatus = (status: string) => {
-    if (TERMINAL_STATUSES.includes(status) && !confirm(`Alterar status para "${collectionStatusLabel[status] ?? status}"? Esta ação é irreversível.`)) return;
+    if (status === c.status) return;
+    if (TERMINAL_STATUSES.includes(status)) {
+      setPendingStatus(status);
+      return;
+    }
     statusMut.mutate(status);
   };
 
@@ -119,17 +141,23 @@ export function CollectionDetailPage() {
         <div className="card p-6">
           <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Interações</h3>
           {canAct && (
-            <div className="mb-4 space-y-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3">
+            <form
+              onSubmit={interactionForm.handleSubmit((v) => interactionMut.mutate(v))}
+              className="mb-4 space-y-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3"
+            >
               <div className="flex gap-2">
-                <select className="input w-auto" aria-label="Canal da interação" value={channel} onChange={(e) => setChannel(e.target.value)}>
+                <select className="input w-auto" aria-label="Canal da interação" {...interactionForm.register('channel')}>
                   {CHANNELS.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
                 </select>
-                <input className="input flex-1" aria-label="Descrição da interação" placeholder="Descreva a interação..." value={notes} onChange={(e) => setNotes(e.target.value)} />
+                <input className="input flex-1" aria-label="Descrição da interação" placeholder="Descreva a interação..." {...interactionForm.register('notes')} />
               </div>
-              <button className="btn-primary w-full" onClick={addInteraction} disabled={interactionMut.isPending}>
-                <MessageSquarePlus className="h-4 w-4" /> Registrar interação
+              {interactionForm.formState.errors.notes && (
+                <p className="text-xs text-rose-600 dark:text-rose-400">{interactionForm.formState.errors.notes.message}</p>
+              )}
+              <button type="submit" className="btn-primary w-full" disabled={interactionMut.isPending}>
+                {interactionMut.isPending ? <Spinner className="h-4 w-4" /> : <MessageSquarePlus className="h-4 w-4" />} Registrar interação
               </button>
-            </div>
+            </form>
           )}
           <div className="space-y-3">
             {c.interactions && c.interactions.length > 0 ? c.interactions.map((it) => (
@@ -148,15 +176,23 @@ export function CollectionDetailPage() {
         <div className="card p-6">
           <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">Promessas de pagamento</h3>
           {canAct && (
-            <div className="mb-4 space-y-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3">
+            <form
+              onSubmit={promiseForm.handleSubmit((v) => promiseMut.mutate(v))}
+              className="mb-4 space-y-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3"
+            >
               <div className="flex gap-2">
-                <input type="number" step="0.01" className="input" aria-label="Valor da promessa" placeholder="Valor" value={promiseAmount || ''} onChange={(e) => setPromiseAmount(Number(e.target.value))} />
-                <input type="date" className="input" aria-label="Data da promessa" value={promiseDate} onChange={(e) => setPromiseDate(e.target.value)} />
+                <input type="number" step="0.01" className="input" aria-label="Valor da promessa" placeholder="Valor" {...promiseForm.register('amount')} />
+                <input type="date" className="input" aria-label="Data da promessa" min={today()} {...promiseForm.register('promisedDate')} />
               </div>
-              <button className="btn-primary w-full" onClick={addPromise} disabled={promiseMut.isPending}>
-                <HandCoins className="h-4 w-4" /> Registrar promessa
+              {(promiseForm.formState.errors.amount || promiseForm.formState.errors.promisedDate) && (
+                <p className="text-xs text-rose-600 dark:text-rose-400">
+                  {promiseForm.formState.errors.amount?.message ?? promiseForm.formState.errors.promisedDate?.message}
+                </p>
+              )}
+              <button type="submit" className="btn-primary w-full" disabled={promiseMut.isPending}>
+                {promiseMut.isPending ? <Spinner className="h-4 w-4" /> : <HandCoins className="h-4 w-4" />} Registrar promessa
               </button>
-            </div>
+            </form>
           )}
           <div className="space-y-3">
             {c.promises && c.promises.length > 0 ? c.promises.map((pr) => (
@@ -187,6 +223,24 @@ export function CollectionDetailPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!pendingStatus}
+        title="Alterar status do caso"
+        message={
+          pendingStatus
+            ? `Alterar o status para "${collectionStatusLabel[pendingStatus] ?? pendingStatus}"? Esta ação é irreversível.`
+            : ''
+        }
+        confirmLabel="Confirmar alteração"
+        loading={statusMut.isPending}
+        onConfirm={() => {
+          if (pendingStatus) {
+            statusMut.mutate(pendingStatus, { onSuccess: () => setPendingStatus(null) });
+          }
+        }}
+        onClose={() => setPendingStatus(null)}
+      />
     </div>
   );
 }

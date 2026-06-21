@@ -64,6 +64,7 @@ export class CreateCustomerDto {
   @ApiPropertyOptional({ description: 'PJ trade name (nome fantasia)' })
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   tradeName?: string;
 
   @ApiProperty({ description: 'CPF (PF) or CNPJ (PJ); digits or formatted', example: '390.533.447-05' })
@@ -75,9 +76,9 @@ export class CreateCustomerDto {
   @ApiPropertyOptional({ description: 'PF birth date (ISO)' }) @IsOptional() @IsISO8601() birthDate?: string;
   @ApiPropertyOptional({ description: 'PJ foundation date (ISO)' }) @IsOptional() @IsISO8601() foundationDate?: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsString() occupation?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() employerName?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() employmentType?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) occupation?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(150) employerName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60) employmentType?: string;
 
   @ApiPropertyOptional({ description: 'Monthly income (PF) or revenue (PJ)', default: 0 })
   @IsOptional()
@@ -97,7 +98,7 @@ export class CreateCustomerDto {
   @IsEnum(CustomerStatus)
   status?: CustomerStatus;
 
-  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) notes?: string;
 
   @ApiPropertyOptional({ type: AddressDto })
   @IsOptional()

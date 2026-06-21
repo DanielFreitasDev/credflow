@@ -73,7 +73,7 @@ export function ProposalsPage() {
         ) : (
           <>
             <div className={isFetching ? 'opacity-60 transition' : ''}>
-              <DataTable columns={columns} data={data.data} onRowClick={(p) => navigate(`/proposals/${p.id}`)} />
+              <DataTable columns={columns} data={data.data} onRowClick={(p) => navigate(`/proposals/${p.id}`)} rowLabel={(p) => `Abrir proposta ${p.number}`} />
             </div>
             <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} />
           </>

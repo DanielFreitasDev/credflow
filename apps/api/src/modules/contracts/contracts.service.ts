@@ -151,7 +151,7 @@ export class ContractsService {
     return contract;
   }
 
-  async findAll(query: ContractQueryDto) {
+  async findAll(query: ContractQueryDto, role?: string) {
     const { skip, take, page, pageSize } = buildPagination(query);
     const where: Prisma.ContractWhereInput = {
       ...(query.status ? { status: query.status } : {}),
@@ -181,13 +181,13 @@ export class ContractsService {
     ]);
 
     const data = rows.map(({ installments, ...c }) => {
-      this.encryption.decryptDocumentField(c.customer);
+      this.encryption.presentDocumentField(c.customer, role);
       return { ...c, ...summarize(installments) };
     });
     return paginatedResponse(data, total, page, pageSize);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, role?: string) {
     const contract = await this.prisma.contract.findUnique({
       where: { id },
       include: {
@@ -199,7 +199,7 @@ export class ContractsService {
       },
     });
     if (!contract) throw new NotFoundException('Contract not found');
-    this.encryption.decryptDocumentField(contract.customer);
+    this.encryption.presentDocumentField(contract.customer, role);
     return { ...contract, summary: summarize(contract.installments) };
   }
 

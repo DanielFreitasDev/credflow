@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod } from '@prisma/client';
-import { IsEnum, IsISO8601, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsISO8601, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
 
 export class CreatePaymentDto {
@@ -26,6 +26,7 @@ export class CreatePaymentDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   notes?: string;
 }
 

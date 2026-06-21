@@ -369,4 +369,31 @@ describe('finance: non-amortizing (balloon) detection', () => {
     const { schedule } = simulate({ principalCents: 1_000_000, monthlyRate: 0.02, termMonths: 12, amortization: 'PRICE' });
     expect(isNonAmortizing(schedule)).toBe(false);
   });
+
+  // Regression: the old rounding-based guard accepted a grossly back-loaded loan
+  // for large principals while rejecting it for small ones. The scale-independent
+  // fraction guard must flag a 200%/month PRICE loan at every principal size.
+  it('flags a 200%/month PRICE loan regardless of principal size', () => {
+    for (const principalCents of [100_000, 1_000_000, 5_000_000, 50_000_000]) {
+      const { schedule } = simulate({ principalCents, monthlyRate: 2.0, termMonths: 12, amortization: 'PRICE' });
+      expect(isNonAmortizing(schedule)).toBe(true);
+    }
+  });
+
+  it('does not flag a high-but-real 10%/month loan', () => {
+    const { schedule } = simulate({ principalCents: 5_000_000, monthlyRate: 0.1, termMonths: 12, amortization: 'PRICE' });
+    expect(isNonAmortizing(schedule)).toBe(false);
+  });
+});
+
+describe('finance: IRR convergence at large scale (relative tolerance)', () => {
+  it('converges to the nominal rate for a fee-free R$1B loan', () => {
+    // The old absolute 1e-6-cent tolerance never triggered at this magnitude and
+    // fell through to the bisection midpoint. A relative tolerance converges.
+    const principalCents = 100_000_000_000; // R$ 1,000,000,000
+    const { schedule } = simulate({ principalCents, monthlyRate: 0.02, termMonths: 12, amortization: 'PRICE' });
+    const irr = computeMonthlyIrr(principalCents, schedule.map((s) => s.amount));
+    expect(irr).toBeGreaterThan(0.0199);
+    expect(irr).toBeLessThan(0.0201);
+  });
 });

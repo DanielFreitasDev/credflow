@@ -66,7 +66,7 @@ export function ContractsPage() {
         ) : (
           <>
             <div className={isFetching ? 'opacity-60 transition' : ''}>
-              <DataTable columns={columns} data={data.data} onRowClick={(c) => navigate(`/contracts/${c.id}`)} />
+              <DataTable columns={columns} data={data.data} onRowClick={(c) => navigate(`/contracts/${c.id}`)} rowLabel={(c) => `Abrir contrato ${c.number}`} />
             </div>
             <Pagination page={data.meta.page} totalPages={data.meta.totalPages} total={data.meta.total} onPage={setPage} />
           </>

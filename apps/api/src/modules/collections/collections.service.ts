@@ -3,6 +3,7 @@ import {
   CollectionStatus,
   ContractStatus,
   InstallmentStatus,
+  InteractionChannel,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -32,6 +33,31 @@ const CASE_TRANSITIONS: Record<CollectionStatus, CollectionStatus[]> = {
   RESOLVED: ['IN_PROGRESS'],
   WRITTEN_OFF: [],
 };
+
+// Dunning ladder (régua de cobrança): escalation stages keyed by days overdue.
+// The case's `dunningStage` tracks the highest stage reached so each step's
+// action is generated at most once.
+interface DunningStage {
+  stage: number;
+  minDays: number;
+  channel: InteractionChannel;
+  action: string;
+}
+
+const DUNNING_LADDER: DunningStage[] = [
+  { stage: 1, minDays: 1, channel: 'SYSTEM', action: 'Lembrete amigável de parcela vencida' },
+  { stage: 2, minDays: 8, channel: 'EMAIL', action: 'Aviso de atraso por e-mail' },
+  { stage: 3, minDays: 16, channel: 'PHONE', action: 'Contato telefônico de cobrança' },
+  { stage: 4, minDays: 31, channel: 'LETTER', action: 'Notificação formal de débito' },
+  { stage: 5, minDays: 61, channel: 'SYSTEM', action: 'Encaminhamento para cobrança jurídica' },
+];
+
+/** Highest dunning stage whose threshold the given days-overdue has reached. */
+function dunningStageFor(daysOverdue: number): DunningStage | null {
+  let match: DunningStage | null = null;
+  for (const s of DUNNING_LADDER) if (daysOverdue >= s.minDays) match = s;
+  return match;
+}
 
 @Injectable()
 export class CollectionsService {
@@ -176,7 +202,91 @@ export class CollectionsService {
     return { scanned: contracts.length, openCases };
   }
 
-  async list(query: CollectionQueryDto) {
+  /**
+   * Full daily collections cycle: flag arrears, advance the dunning ladder and
+   * reconcile payment promises. Idempotent — safe to run on a schedule or on
+   * demand (POST /collections/run). CollectionsScheduler's cron calls this.
+   */
+  async runDailyCollections() {
+    const arrears = await this.refreshAll();
+    const dunning = await this.applyDunningLadder();
+    const promises = await this.reconcilePromises();
+    return { ...arrears, ...dunning, ...promises };
+  }
+
+  /**
+   * Dunning ladder: for each active case, escalate to the stage matching its
+   * days-overdue bucket and record the action as a SYSTEM interaction. The
+   * `dunningStage` field makes this idempotent — each stage fires at most once.
+   */
+  async applyDunningLadder() {
+    const cases = await this.prisma.collectionCase.findMany({
+      where: { status: { notIn: ['RESOLVED', 'WRITTEN_OFF'] }, daysOverdue: { gt: 0 } },
+      select: { id: true, daysOverdue: true, dunningStage: true },
+    });
+    let escalations = 0;
+    for (const cse of cases) {
+      const target = dunningStageFor(cse.daysOverdue);
+      if (!target || target.stage <= cse.dunningStage) continue;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.collectionInteraction.create({
+          data: {
+            caseId: cse.id,
+            channel: target.channel,
+            // System-generated (no human actor): createdById left null.
+            notes: `[Régua etapa ${target.stage}] ${target.action} — ${cse.daysOverdue} dia(s) em atraso.`,
+          },
+        });
+        await tx.collectionCase.update({ where: { id: cse.id }, data: { dunningStage: target.stage } });
+      });
+      await this.audit.record({
+        action: 'DUNNING_ESCALATION',
+        entity: 'CollectionCase',
+        entityId: cse.id,
+        after: { stage: target.stage, channel: target.channel, daysOverdue: cse.daysOverdue },
+      });
+      escalations++;
+    }
+    return { escalations };
+  }
+
+  /**
+   * Reconciles open payment promises: marks KEPT when the contract received at
+   * least the promised amount since the promise was made (or the case resolved),
+   * and BROKEN once the promised date passes unpaid (pulling the case back into
+   * active follow-up).
+   */
+  async reconcilePromises() {
+    const today = startOfDay(new Date());
+    const pending = await this.prisma.paymentPromise.findMany({
+      where: { status: 'PENDING' },
+      include: { case: { select: { id: true, status: true, contractId: true } } },
+    });
+    let promisesKept = 0;
+    let promisesBroken = 0;
+    for (const p of pending) {
+      const promisedCents = reaisToCents(p.amount);
+      const paidAgg = await this.prisma.payment.aggregate({
+        _sum: { amount: true },
+        where: { contractId: p.case.contractId, paidAt: { gte: p.createdAt } },
+      });
+      const paidSinceCents = reaisToCents(paidAgg._sum.amount ?? 0);
+      if (p.case.status === 'RESOLVED' || paidSinceCents >= promisedCents) {
+        await this.prisma.paymentPromise.update({ where: { id: p.id }, data: { status: 'KEPT' } });
+        promisesKept++;
+      } else if (startOfDay(p.promisedDate) < today) {
+        await this.prisma.paymentPromise.update({ where: { id: p.id }, data: { status: 'BROKEN' } });
+        await this.prisma.collectionCase.updateMany({
+          where: { id: p.case.id, status: 'PROMISE' },
+          data: { status: 'IN_PROGRESS' },
+        });
+        promisesBroken++;
+      }
+    }
+    return { promisesKept, promisesBroken };
+  }
+
+  async list(query: CollectionQueryDto, role?: string) {
     const { skip, take, page, pageSize } = buildPagination(query);
     const where: Prisma.CollectionCaseWhereInput = query.status ? { status: query.status } : {};
     const [data, total] = await this.prisma.$transaction([
@@ -198,11 +308,11 @@ export class CollectionsService {
       }),
       this.prisma.collectionCase.count({ where }),
     ]);
-    data.forEach((c) => this.encryption.decryptDocumentField(c.contract?.customer));
+    data.forEach((c) => this.encryption.presentDocumentField(c.contract?.customer, role));
     return paginatedResponse(data, total, page, pageSize);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, role?: string) {
     const cse = await this.prisma.collectionCase.findUnique({
       where: { id },
       include: {
@@ -212,7 +322,7 @@ export class CollectionsService {
       },
     });
     if (!cse) throw new NotFoundException('Collection case not found');
-    this.encryption.decryptDocumentField(cse.contract?.customer);
+    this.encryption.presentDocumentField(cse.contract?.customer, role);
     return cse;
   }
 
@@ -254,6 +364,10 @@ export class CollectionsService {
   async updatePromise(promiseId: string, status: 'KEPT' | 'BROKEN' | 'CANCELLED', actorId?: string) {
     const promise = await this.prisma.paymentPromise.findUnique({ where: { id: promiseId } });
     if (!promise) throw new NotFoundException('Promise not found');
+    // Only a still-PENDING promise can be resolved; KEPT/BROKEN/CANCELLED are terminal.
+    if (promise.status !== 'PENDING') {
+      throw new BadRequestException(`Promise is already ${promise.status.toLowerCase()}`);
+    }
     const updated = await this.prisma.paymentPromise.update({ where: { id: promiseId }, data: { status } });
     await this.audit.record({ userId: actorId, action: 'PROMISE_UPDATE', entity: 'PaymentPromise', entityId: promiseId, after: { status } });
     return updated;

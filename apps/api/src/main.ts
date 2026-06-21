@@ -1,15 +1,21 @@
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
   const isProduction = config.get<string>('nodeEnv') === 'production';
+
+  // Behind a load balancer / reverse proxy, trust the proxy so `req.ip` is the
+  // real client (accurate per-IP throttling and audit) instead of the proxy IP.
+  const trustProxy = config.get<boolean | number | string>('trustProxy');
+  if (trustProxy) app.set('trust proxy', trustProxy);
 
   app.use(helmet());
   app.enableCors({

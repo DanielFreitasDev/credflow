@@ -31,13 +31,13 @@ export class ContractsController {
   }
 
   @Get()
-  findAll(@Query() query: ContractQueryDto) {
-    return this.contracts.findAll(query);
+  findAll(@Query() query: ContractQueryDto, @CurrentUser('role') role: string) {
+    return this.contracts.findAll(query, role);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.contracts.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser('role') role: string) {
+    return this.contracts.findOne(id, role);
   }
 
   @Get(':id/installments')

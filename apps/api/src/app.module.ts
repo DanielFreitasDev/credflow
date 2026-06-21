@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import { ScheduleModule } from '@nestjs/schedule';
+import Redis from 'ioredis';
 import configuration from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
@@ -23,6 +26,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AuditReadModule } from './modules/audit/audit-read.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { HealthModule } from './modules/health/health.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 
 @Module({
   imports: [
@@ -33,13 +37,25 @@ import { HealthModule } from './modules/health/health.module';
     }),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => [
-        {
-          ttl: config.get<number>('throttle.ttl', 60) * 1000,
-          limit: config.get<number>('throttle.limit', 120),
-        },
-      ],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('throttle.redisUrl');
+        return {
+          throttlers: [
+            {
+              ttl: config.get<number>('throttle.ttl', 60) * 1000,
+              limit: config.get<number>('throttle.limit', 120),
+            },
+          ],
+          // A shared Redis store keeps rate limits consistent across replicas
+          // and restarts; without it we fall back to per-process in-memory
+          // counters (fine for a single instance / local dev).
+          storage: redisUrl
+            ? new ThrottlerStorageRedisService(new Redis(redisUrl))
+            : undefined,
+        };
+      },
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuditModule,
     CryptoModule,
@@ -55,6 +71,7 @@ import { HealthModule } from './modules/health/health.module';
     AuditReadModule,
     ReportsModule,
     HealthModule,
+    MetricsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

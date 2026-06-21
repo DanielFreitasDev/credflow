@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
@@ -26,6 +27,7 @@ export class CreateInteractionDto {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(2000)
   notes!: string;
 }
 
@@ -42,6 +44,7 @@ export class CreatePromiseDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   notes?: string;
 }
 
@@ -83,5 +86,6 @@ export class RenegotiateDto {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(1000)
   reason!: string;
 }

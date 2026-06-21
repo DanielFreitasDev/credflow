@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Cpu, Gavel, FileSignature, Send, Ban } from 'lucide-react';
@@ -14,7 +17,7 @@ import {
   percentFromFraction,
   proposalStatusLabel,
 } from '../lib/format';
-import { ErrorState, LoadingState, Modal, PageHeader, Spinner, StatusBadge, Stat } from '../components/ui';
+import { ConfirmDialog, ErrorState, LoadingState, Modal, PageHeader, Spinner, StatusBadge, Stat } from '../components/ui';
 
 export function ProposalDetailPage() {
   const { id } = useParams();
@@ -24,6 +27,7 @@ export function ProposalDetailPage() {
   const { hasRole } = useAuth();
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [contractOpen, setContractOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const { data: p, isLoading, error } = useQuery({
     queryKey: ['proposal', id],
@@ -79,7 +83,7 @@ export function ProposalDetailPage() {
               </button>
             )}
             {['DRAFT', 'UNDER_REVIEW', 'APPROVED'].includes(p.status) && canAnalyze && (
-              <button className="btn-danger" onClick={() => { if (confirm('Cancelar proposta?')) action.mutate(() => api.post(`/proposals/${id}/cancel`, { reason: 'Cancelada pelo usuário' }).then(r => { toast.success('Proposta cancelada'); return r; })); }}>
+              <button className="btn-danger" onClick={() => setCancelOpen(true)}>
                 <Ban className="h-4 w-4" /> Cancelar
               </button>
             )}
@@ -191,118 +195,165 @@ export function ProposalDetailPage() {
 
       <DecisionModal open={decisionOpen} onClose={() => setDecisionOpen(false)} proposalId={id!} requested={p.requestedAmount} onDone={invalidate} />
       <ContractModal open={contractOpen} onClose={() => setContractOpen(false)} proposalId={id!} onDone={(cid) => navigate(`/contracts/${cid}`)} />
+      <ConfirmDialog
+        open={cancelOpen}
+        title="Cancelar proposta"
+        message="Tem certeza que deseja cancelar esta proposta? Esta ação não pode ser desfeita."
+        confirmLabel="Cancelar proposta"
+        cancelLabel="Voltar"
+        loading={action.isPending}
+        onConfirm={() =>
+          action.mutate(
+            () =>
+              api
+                .post(`/proposals/${id}/cancel`, { reason: 'Cancelada pelo usuário' })
+                .then((r) => {
+                  toast.success('Proposta cancelada');
+                  return r;
+                }),
+            { onSuccess: () => setCancelOpen(false) },
+          )
+        }
+        onClose={() => setCancelOpen(false)}
+      />
     </div>
   );
 }
 
+const decisionSchema = z
+  .object({
+    decision: z.enum(['APPROVED', 'REJECTED']),
+    approvedAmount: z.coerce.number().optional(),
+    reason: z.string().optional(),
+  })
+  .refine((v) => v.decision !== 'APPROVED' || (v.approvedAmount != null && v.approvedAmount > 0), {
+    path: ['approvedAmount'],
+    message: 'Informe um valor maior que zero',
+  });
+type DecisionValues = z.infer<typeof decisionSchema>;
+
 function DecisionModal({ open, onClose, proposalId, requested, onDone }: { open: boolean; onClose: () => void; proposalId: string; requested: number; onDone: () => void }) {
   const toast = useToast();
-  const [decision, setDecision] = useState<'APPROVED' | 'REJECTED'>('APPROVED');
-  const [approvedAmount, setApprovedAmount] = useState(requested);
-  const [reason, setReason] = useState('');
-  const [loading, setLoading] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<DecisionValues>({
+    resolver: zodResolver(decisionSchema),
+    defaultValues: { decision: 'APPROVED', approvedAmount: requested, reason: '' },
+  });
+  const decision = watch('decision');
 
-  const submit = async () => {
-    setLoading(true);
+  const submit = async (v: DecisionValues) => {
     try {
       await api.post(`/proposals/${proposalId}/decision`, {
-        decision,
-        approvedAmount: decision === 'APPROVED' ? approvedAmount : undefined,
-        reason: reason || 'Decisão manual',
+        decision: v.decision,
+        approvedAmount: v.decision === 'APPROVED' ? v.approvedAmount : undefined,
+        reason: v.reason || 'Decisão manual',
       });
       toast.success('Decisão registrada');
       onDone();
       onClose();
     } catch (e) {
       toast.error(apiError(e));
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <Modal open={open} onClose={onClose} title="Decisão manual de crédito">
-      <div className="space-y-4">
+      <form onSubmit={handleSubmit(submit)} className="space-y-4">
         <div>
-          <label className="label">Decisão</label>
-          <select className="input" value={decision} onChange={(e) => setDecision(e.target.value as 'APPROVED')}>
+          <label className="label" htmlFor="dec-decision">Decisão</label>
+          <select id="dec-decision" className="input" {...register('decision')}>
             <option value="APPROVED">Aprovar</option>
             <option value="REJECTED">Recusar</option>
           </select>
         </div>
         {decision === 'APPROVED' && (
           <div>
-            <label className="label">Valor aprovado (R$)</label>
-            <input type="number" className="input" value={approvedAmount} onChange={(e) => setApprovedAmount(Number(e.target.value))} />
+            <label className="label" htmlFor="dec-amount">Valor aprovado (R$)</label>
+            <input id="dec-amount" type="number" step="0.01" className="input" {...register('approvedAmount')} />
+            {errors.approvedAmount && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.approvedAmount.message}</p>}
           </div>
         )}
         <div>
-          <label className="label">Justificativa</label>
-          <textarea rows={3} className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <label className="label" htmlFor="dec-reason">Justificativa</label>
+          <textarea id="dec-reason" rows={3} className="input" {...register('reason')} />
         </div>
         <div className="flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={submit} disabled={loading}>{loading && <Spinner className="h-4 w-4" />}Confirmar</button>
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={isSubmitting}>{isSubmitting && <Spinner className="h-4 w-4" />}Confirmar</button>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }
 
+const contractSchema = z.object({
+  startDate: z.string().optional(),
+  firstDueDate: z.string().optional(),
+  lateFee: z.coerce.number().min(0, 'Não pode ser negativo').max(100, 'Máximo de 100%'),
+  lateInterest: z.coerce.number().min(0, 'Não pode ser negativo').max(100, 'Máximo de 100%'),
+});
+type ContractValues = z.infer<typeof contractSchema>;
+
 function ContractModal({ open, onClose, proposalId, onDone }: { open: boolean; onClose: () => void; proposalId: string; onDone: (contractId: string) => void }) {
   const toast = useToast();
-  const [startDate, setStartDate] = useState('');
-  const [firstDueDate, setFirstDueDate] = useState('');
-  const [lateFee, setLateFee] = useState(2);
-  const [lateInterest, setLateInterest] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<ContractValues>({
+    resolver: zodResolver(contractSchema),
+    defaultValues: { startDate: '', firstDueDate: '', lateFee: 2, lateInterest: 1 },
+  });
 
-  const submit = async () => {
-    setLoading(true);
+  const submit = async (v: ContractValues) => {
     try {
       const res = await api.post(`/contracts/from-proposal/${proposalId}`, {
-        startDate: startDate ? new Date(startDate).toISOString() : undefined,
-        firstDueDate: firstDueDate ? new Date(firstDueDate).toISOString() : undefined,
-        lateFeeRate: lateFee / 100,
-        lateInterestRate: lateInterest / 100,
+        startDate: v.startDate ? new Date(v.startDate).toISOString() : undefined,
+        firstDueDate: v.firstDueDate ? new Date(v.firstDueDate).toISOString() : undefined,
+        lateFeeRate: v.lateFee / 100,
+        lateInterestRate: v.lateInterest / 100,
       });
       toast.success(`Contrato ${res.data.number} gerado`);
       onClose();
       onDone(res.data.id);
     } catch (e) {
       toast.error(apiError(e));
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <Modal open={open} onClose={onClose} title="Gerar contrato">
-      <div className="space-y-4">
+      <form onSubmit={handleSubmit(submit)} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Data de início</label>
-            <input type="date" className="input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <label className="label" htmlFor="ctr-start">Data de início</label>
+            <input id="ctr-start" type="date" className="input" {...register('startDate')} />
           </div>
           <div>
-            <label className="label">1º vencimento</label>
-            <input type="date" className="input" value={firstDueDate} onChange={(e) => setFirstDueDate(e.target.value)} />
+            <label className="label" htmlFor="ctr-due">1º vencimento</label>
+            <input id="ctr-due" type="date" className="input" {...register('firstDueDate')} />
           </div>
           <div>
-            <label className="label">Multa por atraso (%)</label>
-            <input type="number" step="0.5" className="input" value={lateFee} onChange={(e) => setLateFee(Number(e.target.value))} />
+            <label className="label" htmlFor="ctr-fee">Multa por atraso (%)</label>
+            <input id="ctr-fee" type="number" step="0.5" className="input" {...register('lateFee')} />
+            {errors.lateFee && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.lateFee.message}</p>}
           </div>
           <div>
-            <label className="label">Juros de mora (% a.m.)</label>
-            <input type="number" step="0.5" className="input" value={lateInterest} onChange={(e) => setLateInterest(Number(e.target.value))} />
+            <label className="label" htmlFor="ctr-mora">Juros de mora (% a.m.)</label>
+            <input id="ctr-mora" type="number" step="0.5" className="input" {...register('lateInterest')} />
+            {errors.lateInterest && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.lateInterest.message}</p>}
           </div>
         </div>
         <p className="text-xs text-slate-400 dark:text-slate-500">Datas em branco usam hoje e o vencimento padrão (início + 1 mês).</p>
         <div className="flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={submit} disabled={loading}>{loading && <Spinner className="h-4 w-4" />}Gerar contrato</button>
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={isSubmitting}>{isSubmitting && <Spinner className="h-4 w-4" />}Gerar contrato</button>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }

@@ -46,3 +46,52 @@ describe('EncryptionService.decryptDocumentField', () => {
     expect(() => service.decryptDocumentField(undefined)).not.toThrow();
   });
 });
+
+/**
+ * Role-aware presentation: the read-only AUDITOR oversight role must never
+ * receive a raw CPF/CNPJ — it gets a last-4 mask — while operational roles get
+ * the real decrypted document. Guards the customer/proposal/contract/collection
+ * read paths that thread the actor role through.
+ */
+describe('EncryptionService.presentDocumentField (role-aware masking)', () => {
+  const key = Buffer.alloc(32, 7).toString('base64');
+  const service = new EncryptionService({
+    getOrThrow: () => key,
+  } as unknown as ConfigService);
+
+  it('masks all but the last 4 digits for AUDITOR (encrypted source)', () => {
+    const customer: Record<string, unknown> = {
+      document: service.encrypt('15350946056'),
+      documentHash: 'h',
+    };
+    service.presentDocumentField(customer, 'AUDITOR');
+    expect(customer.document).toBe('*******6056');
+    expect('documentHash' in customer).toBe(false);
+  });
+
+  it('returns the real decrypted document for an operational role', () => {
+    const customer: Record<string, unknown> = {
+      document: service.encrypt('15350946056'),
+      documentHash: 'h',
+    };
+    service.presentDocumentField(customer, 'OPERATOR');
+    expect(customer.document).toBe('15350946056');
+  });
+
+  it('masks legacy plaintext for AUDITOR too', () => {
+    const customer: Record<string, unknown> = { document: '15350946056' };
+    service.presentDocumentField(customer, 'AUDITOR');
+    expect(customer.document).toBe('*******6056');
+  });
+
+  describe('maskDocument', () => {
+    it('keeps only the last 4 digits (CPF and CNPJ)', () => {
+      expect(service.maskDocument('15350946056')).toBe('*******6056');
+      expect(service.maskDocument('12345678000199')).toBe('**********0199');
+    });
+    it('handles null and short values', () => {
+      expect(service.maskDocument(null)).toBeNull();
+      expect(service.maskDocument('12')).toBe('**');
+    });
+  });
+});

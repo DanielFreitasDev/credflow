@@ -31,20 +31,22 @@ export class CollectionsController {
   @Post('run')
   @HttpCode(200)
   @Roles(Role.MANAGER, Role.OPERATOR)
-  @ApiOperation({ summary: 'Run the arrears engine (mark overdue, open/close cases)' })
+  @ApiOperation({
+    summary: 'Run the full collections cycle (arrears, dunning ladder, promise reconciliation)',
+  })
   run() {
-    return this.collections.refreshAll();
+    return this.collections.runDailyCollections();
   }
 
   @Get()
   @ApiOperation({ summary: 'List collection cases' })
-  list(@Query() query: CollectionQueryDto) {
-    return this.collections.list(query);
+  list(@Query() query: CollectionQueryDto, @CurrentUser('role') role: string) {
+    return this.collections.list(query, role);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.collections.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser('role') role: string) {
+    return this.collections.findOne(id, role);
   }
 
   @Post(':id/interactions')

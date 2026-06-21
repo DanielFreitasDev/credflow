@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Banknote, RefreshCw, PhoneCall } from 'lucide-react';
@@ -158,39 +161,61 @@ export function ContractDetailPage() {
   );
 }
 
+const paymentSchema = z.object({
+  amount: z.coerce.number({ invalid_type_error: 'Informe um valor' }).positive('O valor deve ser maior que zero'),
+  method: z.string().min(1),
+  paidAt: z.string().min(1, 'Informe a data'),
+});
+type PaymentValues = z.infer<typeof paymentSchema>;
+
 function PaymentModal({ installment, onClose, onDone }: { installment: Installment; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
-  const [amount, setAmount] = useState<number | null>(null);
-  const [method, setMethod] = useState('PIX');
-  const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10));
-  const [loading, setLoading] = useState(false);
+  // Tracks whether the user manually edited the amount; until then it mirrors the computed charges.
+  const [amountTouched, setAmountTouched] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<PaymentValues>({
+    resolver: zodResolver(paymentSchema),
+    defaultValues: {
+      amount: installment.amountDue - installment.amountPaid,
+      method: 'PIX',
+      paidAt: new Date().toISOString().slice(0, 10),
+    },
+  });
+
+  const paidAt = watch('paidAt');
 
   const { data: charges } = useQuery({
     queryKey: ['charges', installment.id, paidAt],
     queryFn: async () =>
       (await api.get<ChargesPreview>(`/contracts/installments/${installment.id}/charges`, { params: { date: new Date(paidAt).toISOString() } })).data,
+    enabled: !!paidAt,
   });
 
   const due = charges?.totalDue ?? installment.amountDue - installment.amountPaid;
-  const value = amount ?? due;
+  // Keep the amount synced to the recomputed total until the user overrides it.
+  useEffect(() => {
+    if (!amountTouched) setValue('amount', due);
+  }, [due, amountTouched, setValue]);
 
-  const submit = async () => {
-    setLoading(true);
+  const submit = async (v: PaymentValues) => {
     try {
-      await api.post('/payments', { installmentId: installment.id, amount: value, method, paidAt: new Date(paidAt).toISOString() });
+      await api.post('/payments', { installmentId: installment.id, amount: v.amount, method: v.method, paidAt: new Date(v.paidAt).toISOString() });
       toast.success('Pagamento registrado');
       onDone();
       onClose();
     } catch (e) {
       toast.error(apiError(e));
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <Modal open onClose={onClose} title={`Pagar parcela ${installment.number}`}>
-      <div className="space-y-4">
+      <form onSubmit={handleSubmit(submit)} className="space-y-4">
         {charges && (
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3 text-sm">
             <span className="text-slate-500 dark:text-slate-400">Em atraso</span>
@@ -207,86 +232,114 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
         )}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Valor pago (R$)</label>
-            <input type="number" step="0.01" className="input" value={value} onChange={(e) => setAmount(Number(e.target.value))} />
+            <label className="label" htmlFor="pay-amount">Valor pago (R$)</label>
+            <input
+              id="pay-amount"
+              type="number"
+              step="0.01"
+              className="input"
+              {...register('amount', { onChange: () => setAmountTouched(true) })}
+            />
+            {errors.amount && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.amount.message}</p>}
           </div>
           <div>
-            <label className="label">Data</label>
-            <input type="date" className="input" value={paidAt} onChange={(e) => { setPaidAt(e.target.value); setAmount(null); }} />
+            <label className="label" htmlFor="pay-date">Data</label>
+            <input
+              id="pay-date"
+              type="date"
+              className="input"
+              {...register('paidAt', { onChange: () => setAmountTouched(false) })}
+            />
+            {errors.paidAt && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.paidAt.message}</p>}
           </div>
           <div className="col-span-2">
-            <label className="label">Forma de pagamento</label>
-            <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
+            <label className="label" htmlFor="pay-method">Forma de pagamento</label>
+            <select id="pay-method" className="input" {...register('method')}>
               {['PIX', 'BOLETO', 'TED', 'CASH', 'CARD', 'INTERNAL'].map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
         </div>
         <p className="text-xs text-slate-400 dark:text-slate-500">Pagamento parcial é permitido (valor menor que o total devido).</p>
         <div className="flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={submit} disabled={loading}><Banknote className="h-4 w-4" />{loading && <Spinner className="h-4 w-4" />}Registrar pagamento</button>
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={isSubmitting}><Banknote className="h-4 w-4" />{isSubmitting && <Spinner className="h-4 w-4" />}Registrar pagamento</button>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }
 
+const renegSchema = z.object({
+  termMonths: z.coerce.number().int('Use um número inteiro').min(1, 'Mínimo de 1 mês').max(600, 'Prazo muito longo'),
+  ratePercent: z.coerce.number().min(0, 'Não pode ser negativa').max(100, 'Máximo de 100% a.m.'),
+  amortizationType: z.enum(['PRICE', 'SAC', 'SIMPLE']),
+  reason: z.string().optional(),
+});
+type RenegValues = z.infer<typeof renegSchema>;
+
 function RenegotiateModal({ open, contract, onClose, onDone }: { open: boolean; contract: Contract; onClose: () => void; onDone: (id: string) => void }) {
   const toast = useToast();
-  const [termMonths, setTermMonths] = useState(contract.termMonths);
-  const [ratePercent, setRatePercent] = useState(Number((contract.interestRate * 100).toFixed(2)));
-  const [amortizationType, setAmortizationType] = useState(contract.amortizationType);
-  const [reason, setReason] = useState('');
-  const [loading, setLoading] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<RenegValues>({
+    resolver: zodResolver(renegSchema),
+    defaultValues: {
+      termMonths: contract.termMonths,
+      ratePercent: Number((contract.interestRate * 100).toFixed(2)),
+      amortizationType: contract.amortizationType,
+      reason: '',
+    },
+  });
 
-  const submit = async () => {
-    setLoading(true);
+  const submit = async (v: RenegValues) => {
     try {
       const res = await api.post(`/collections/contracts/${contract.id}/renegotiate`, {
-        termMonths,
-        interestRate: ratePercent / 100,
-        amortizationType,
-        reason: reason || 'Renegociação de dívida',
+        termMonths: v.termMonths,
+        interestRate: v.ratePercent / 100,
+        amortizationType: v.amortizationType,
+        reason: v.reason || 'Renegociação de dívida',
       });
       toast.success(`Novo contrato ${res.data.number} gerado`);
       onClose();
       onDone(res.data.id);
     } catch (e) {
       toast.error(apiError(e));
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <Modal open={open} onClose={onClose} title="Renegociar dívida">
-      <div className="space-y-4">
+      <form onSubmit={handleSubmit(submit)} className="space-y-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">O saldo devedor em aberto (incluindo encargos de mora) será consolidado em um novo contrato.</p>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Novo prazo (meses)</label>
-            <input type="number" className="input" value={termMonths} onChange={(e) => setTermMonths(Number(e.target.value))} />
+            <label className="label" htmlFor="reneg-term">Novo prazo (meses)</label>
+            <input id="reneg-term" type="number" className="input" {...register('termMonths')} />
+            {errors.termMonths && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.termMonths.message}</p>}
           </div>
           <div>
-            <label className="label">Nova taxa (% a.m.)</label>
-            <input type="number" step="0.01" className="input" value={ratePercent} onChange={(e) => setRatePercent(Number(e.target.value))} />
+            <label className="label" htmlFor="reneg-rate">Nova taxa (% a.m.)</label>
+            <input id="reneg-rate" type="number" step="0.01" className="input" {...register('ratePercent')} />
+            {errors.ratePercent && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.ratePercent.message}</p>}
           </div>
           <div className="col-span-2">
-            <label className="label">Sistema</label>
-            <select className="input" value={amortizationType} onChange={(e) => setAmortizationType(e.target.value as 'PRICE')}>
+            <label className="label" htmlFor="reneg-system">Sistema</label>
+            <select id="reneg-system" className="input" {...register('amortizationType')}>
               {Object.entries(amortizationLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
           <div className="col-span-2">
-            <label className="label">Motivo</label>
-            <textarea rows={2} className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <label className="label" htmlFor="reneg-reason">Motivo</label>
+            <textarea id="reneg-reason" rows={2} className="input" {...register('reason')} />
           </div>
         </div>
         <div className="flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={submit} disabled={loading}>{loading && <Spinner className="h-4 w-4" />}Renegociar</button>
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={isSubmitting}>{isSubmitting && <Spinner className="h-4 w-4" />}Renegociar</button>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }

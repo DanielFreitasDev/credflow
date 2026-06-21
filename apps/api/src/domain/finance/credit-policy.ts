@@ -95,7 +95,7 @@ export function evaluateCredit(input: PolicyInput, cfg: PolicyConfig = DEFAULT_P
 
   score = Math.max(0, Math.min(1000, score));
   const riskBand = bandForScore(score, cfg);
-  const suggestedLimit = Math.round(input.monthlyIncome * cfg.limitIncomeFactor[riskBand]);
+  const suggestedLimit = Math.max(0, Math.round(input.monthlyIncome * cfg.limitIncomeFactor[riskBand]));
 
   // --- Decision ---
   let decision: PolicyDecision;

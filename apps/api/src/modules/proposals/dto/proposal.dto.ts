@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
@@ -60,6 +61,7 @@ export class CreateProposalDto extends SimulateProposalDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(300)
   purpose?: string;
 }
 
@@ -79,5 +81,6 @@ export class CancelProposalDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   reason?: string;
 }

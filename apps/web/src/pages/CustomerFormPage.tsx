@@ -21,7 +21,7 @@ const schema = z.object({
   foundationDate: z.string().optional(),
   occupation: z.string().optional(),
   monthlyIncome: z.coerce.number().min(0),
-  internalScore: z.coerce.number().min(0).max(1000),
+  internalScore: z.coerce.number().int('Use um número inteiro').min(0).max(1000),
   status: z.enum(['PROSPECT', 'ACTIVE', 'INACTIVE', 'BLOCKED']),
   notes: z.string().optional(),
   street: z.string().optional(),

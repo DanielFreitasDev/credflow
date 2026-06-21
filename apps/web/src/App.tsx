@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Route-level code splitting: each page ships as its own chunk so the initial
 // bundle stays small (the dashboard pulls in Recharts, which is heavy).
@@ -21,6 +22,8 @@ const CollectionsPage = lazy(() => import('./pages/CollectionsPage').then((m) =>
 const CollectionDetailPage = lazy(() => import('./pages/CollectionDetailPage').then((m) => ({ default: m.CollectionDetailPage })));
 const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
 const AuditPage = lazy(() => import('./pages/AuditPage').then((m) => ({ default: m.AuditPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
 
 function PageFallback() {
   return (
@@ -36,7 +39,13 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
-          <Route element={<Layout />}>
+          <Route
+            element={
+              <ErrorBoundary>
+                <Layout />
+              </ErrorBoundary>
+            }
+          >
             <Route path="/" element={<DashboardPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/new" element={<CustomerFormPage />} />
@@ -52,9 +61,12 @@ export default function App() {
             <Route path="/collections/:id" element={<CollectionDetailPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/audit" element={<AuditPage />} />
+            <Route path="/perfil" element={<ProfilePage />} />
+            {/* Authenticated users hit a friendly 404 inside the shell; unauthenticated
+                users matching this fall through ProtectedRoute → /login. */}
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );

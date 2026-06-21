@@ -40,13 +40,13 @@ export class ProposalsController {
   }
 
   @Get()
-  findAll(@Query() query: ProposalQueryDto) {
-    return this.proposals.findAll(query);
+  findAll(@Query() query: ProposalQueryDto, @CurrentUser('role') role: string) {
+    return this.proposals.findAll(query, role);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.proposals.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser('role') role: string) {
+    return this.proposals.findOne(id, role);
   }
 
   @Post(':id/submit')
