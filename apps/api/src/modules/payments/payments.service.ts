@@ -5,7 +5,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
 import { daysBetween, startOfDay } from '../../common/utils/date.util';
 import { computeOutstanding } from '../../domain/finance/finance';
-import { centsToDecimal, centsToReais, reaisToCents, roundCents } from '../../domain/finance/money';
+import { centsToDecimal, centsToReais, reaisToCents } from '../../domain/finance/money';
 import { ContractsService } from '../contracts/contracts.service';
 import { CollectionsService } from '../collections/collections.service';
 import { CreatePaymentDto, PaymentQueryDto, SettleInstallmentDto } from './dto/payment.dto';
@@ -25,67 +25,80 @@ export class PaymentsService {
    * installment interest -> principal. Supports partial and late payments.
    */
   async register(dto: CreatePaymentDto, actorId?: string) {
-    const installment = await this.prisma.installment.findUnique({
-      where: { id: dto.installmentId },
-      include: { contract: true },
-    });
-    if (!installment) throw new NotFoundException('Installment not found');
-    if (installment.status === 'PAID') throw new BadRequestException('Installment is already paid');
-    if (installment.status === 'CANCELLED' || installment.status === 'RENEGOTIATED') {
-      throw new BadRequestException('Installment is not payable');
-    }
-
-    const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
-    const amountDueCents = reaisToCents(installment.amountDue);
-    const interestDueCents = reaisToCents(installment.interestDue);
-    const amountPaidCents = reaisToCents(installment.amountPaid);
-
-    const daysLate = Math.max(0, daysBetween(startOfDay(installment.dueDate), startOfDay(paidAt)));
-    // Single source of truth — credits any fine/mora already paid so charges are
-    // never recomputed from scratch and charged twice.
-    const outstanding = computeOutstanding({
-      amountDueCents,
-      amountPaidCents,
-      lateFeePaidCents: reaisToCents(installment.lateFee),
-      lateInterestPaidCents: reaisToCents(installment.lateInterest),
-      daysLate,
-      fineRate: Number(installment.contract.lateFeeRate),
-      monthlyInterestRate: Number(installment.contract.lateInterestRate),
-    });
-
-    const baseRemaining = outstanding.baseOutstandingCents;
-    const totalOwedCents = outstanding.totalOutstandingCents;
     const payCents = reaisToCents(dto.amount);
     if (payCents <= 0) throw new BadRequestException('Amount must be positive');
-    if (payCents > totalOwedCents + 1) {
-      throw new BadRequestException(
-        `Amount exceeds total due (R$ ${centsToReais(totalOwedCents).toFixed(2)})`,
-      );
-    }
+    const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
 
-    // Waterfall allocation: arrears interest -> fine -> installment base.
-    const payMora = Math.min(payCents, outstanding.interestOutstandingCents);
-    let rem = payCents - payMora;
-    const payFine = Math.min(rem, outstanding.fineOutstandingCents);
-    rem -= payFine;
-    const payBase = Math.min(rem, baseRemaining);
+    // Lock + allocate + write + settle + refresh-arrears all commit in ONE
+    // transaction. The row lock serialises concurrent payments against the same
+    // installment, eliminating the read-modify-write lost-update window.
+    const { payment, newStatus, allocation } = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Installment" WHERE id = ${dto.installmentId} FOR UPDATE`;
+      const installment = await tx.installment.findUnique({
+        where: { id: dto.installmentId },
+        include: { contract: true },
+      });
+      if (!installment) throw new NotFoundException('Installment not found');
+      if (installment.status === 'PAID') throw new BadRequestException('Installment is already paid');
+      if (installment.status === 'CANCELLED' || installment.status === 'RENEGOTIATED') {
+        throw new BadRequestException('Installment is not payable');
+      }
 
-    const interestPortion =
-      amountDueCents > 0 ? roundCents((payBase * interestDueCents) / amountDueCents) : 0;
-    const principalPortion = payBase - interestPortion;
+      const amountDueCents = reaisToCents(installment.amountDue);
+      const interestDueCents = reaisToCents(installment.interestDue);
+      const amountPaidCents = reaisToCents(installment.amountPaid);
 
-    const newAmountPaidCents = amountPaidCents + payBase;
-    const fullyPaid = newAmountPaidCents >= amountDueCents;
-    const newStatus: InstallmentStatus = fullyPaid
-      ? InstallmentStatus.PAID
-      : InstallmentStatus.PARTIALLY_PAID;
+      const daysLate = Math.max(0, daysBetween(startOfDay(installment.dueDate), startOfDay(paidAt)));
+      // Single source of truth — credits any fine/mora already paid so charges
+      // are never recomputed from scratch and charged twice.
+      const outstanding = computeOutstanding({
+        amountDueCents,
+        amountPaidCents,
+        lateFeePaidCents: reaisToCents(installment.lateFee),
+        lateInterestPaidCents: reaisToCents(installment.lateInterest),
+        daysLate,
+        fineRate: Number(installment.contract.lateFeeRate),
+        monthlyInterestRate: Number(installment.contract.lateInterestRate),
+      });
 
-    const [payment] = await this.prisma.$transaction([
-      this.prisma.payment.create({
+      const baseRemaining = outstanding.baseOutstandingCents;
+      const totalOwedCents = outstanding.totalOutstandingCents;
+      // Reject overpayment exactly — no silent slack that would be recorded on
+      // the payment but allocated to nothing.
+      if (payCents > totalOwedCents) {
+        throw new BadRequestException(
+          `Amount exceeds total due (R$ ${centsToReais(totalOwedCents).toFixed(2)})`,
+        );
+      }
+
+      // Waterfall: arrears interest (mora) -> fine -> installment interest -> principal.
+      const payMora = Math.min(payCents, outstanding.interestOutstandingCents);
+      let rem = payCents - payMora;
+      const payFine = Math.min(rem, outstanding.fineOutstandingCents);
+      rem -= payFine;
+      const payBase = Math.min(rem, baseRemaining);
+
+      // Interest-first within the installment base (the documented order). Since
+      // interest is always settled before principal, the interest already paid
+      // is exactly min(amountPaid, interestDue) — so the per-payment split stays
+      // correct across multiple partial payments without a separate column.
+      const interestPaidBefore = Math.min(amountPaidCents, interestDueCents);
+      const interestOwed = Math.max(0, interestDueCents - interestPaidBefore);
+      const interestPortion = Math.min(payBase, interestOwed);
+      const principalPortion = payBase - interestPortion;
+
+      const allocatedCents = payMora + payFine + payBase;
+      const newAmountPaidCents = amountPaidCents + payBase;
+      const fullyPaid = newAmountPaidCents >= amountDueCents;
+      const newStatus: InstallmentStatus = fullyPaid
+        ? InstallmentStatus.PAID
+        : InstallmentStatus.PARTIALLY_PAID;
+
+      const payment = await tx.payment.create({
         data: {
           contractId: installment.contractId,
           installmentId: installment.id,
-          amount: centsToDecimal(payCents),
+          amount: centsToDecimal(allocatedCents),
           method: dto.method ?? PaymentMethod.PIX,
           paidAt,
           principalPortion: centsToDecimal(principalPortion),
@@ -95,8 +108,8 @@ export class PaymentsService {
           notes: dto.notes,
           registeredById: actorId,
         },
-      }),
-      this.prisma.installment.update({
+      });
+      await tx.installment.update({
         where: { id: installment.id },
         data: {
           amountPaid: centsToDecimal(newAmountPaidCents),
@@ -105,24 +118,30 @@ export class PaymentsService {
           status: newStatus,
           paidAt: fullyPaid ? paidAt : null,
         },
-      }),
-    ]);
+      });
 
-    // Recompute contract settlement, then refresh arrears state.
-    await this.contracts.recomputeContractStatus(installment.contractId);
-    await this.collections.refreshContract(installment.contractId);
+      // Settlement recompute + arrears refresh join THIS transaction.
+      await this.contracts.recomputeContractStatus(installment.contractId, tx);
+      await this.collections.refreshContract(installment.contractId, tx);
+
+      return {
+        payment,
+        newStatus,
+        allocation: { payMora, payFine, principalPortion, interestPortion, allocatedCents },
+      };
+    });
 
     await this.audit.record({
       userId: actorId,
       action: 'PAYMENT',
       entity: 'Installment',
-      entityId: installment.id,
+      entityId: dto.installmentId,
       after: {
-        amount: centsToReais(payCents),
-        principal: centsToReais(principalPortion),
-        interest: centsToReais(interestPortion),
-        fine: centsToReais(payFine),
-        arrearsInterest: centsToReais(payMora),
+        amount: centsToReais(allocation.allocatedCents),
+        principal: centsToReais(allocation.principalPortion),
+        interest: centsToReais(allocation.interestPortion),
+        fine: centsToReais(allocation.payFine),
+        arrearsInterest: centsToReais(allocation.payMora),
         status: newStatus,
       },
     });

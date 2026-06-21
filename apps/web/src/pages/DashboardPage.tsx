@@ -75,8 +75,9 @@ export function DashboardPage() {
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="card p-5 lg:col-span-2">
           <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-200">Recebimentos futuros (6 meses)</h3>
+          <div role="img" aria-label="Gráfico de recebimentos futuros nos próximos 6 meses">
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={data.upcomingReceivables.map((r) => ({ ...r, label: monthLabel(r.month) }))}>
+            <BarChart accessibilityLayer data={data.upcomingReceivables.map((r) => ({ ...r, label: monthLabel(r.month) }))}>
               <XAxis dataKey="label" tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
               <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
               <Tooltip
@@ -89,10 +90,12 @@ export function DashboardPage() {
               <Bar dataKey="amount" fill="#255eeb" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="card p-5">
           <h3 className="mb-4 font-semibold text-slate-800 dark:text-slate-200">Clientes por faixa de risco</h3>
+          <div role="img" aria-label="Gráfico de clientes por faixa de risco">
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
               <Pie
@@ -111,6 +114,7 @@ export function DashboardPage() {
               <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} />
             </PieChart>
           </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

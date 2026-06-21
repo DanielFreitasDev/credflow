@@ -50,9 +50,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status = HttpStatus.BAD_REQUEST;
       message = 'Invalid query parameters';
       error = 'BadRequest';
-    } else if (exception instanceof Error) {
-      message = exception.message;
     }
+    // Any other thrown value stays a generic 500: never echo an unexpected
+    // error's message/stack to the client (it can leak internals — e.g. a raw
+    // Prisma error with file paths and the failing query). The full detail is
+    // logged server-side below.
 
     if (status >= 500) {
       this.logger.error(

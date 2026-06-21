@@ -9,6 +9,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
+  const isProduction = config.get<string>('nodeEnv') === 'production';
 
   app.use(helmet());
   app.enableCors({
@@ -26,21 +27,28 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('CredFlow API')
-    .setDescription('Credit & Loan Management Platform')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: { persistAuthorization: true },
-  });
+  // Drain in-flight requests and close the Prisma pool cleanly on SIGTERM/SIGINT
+  // (docker stop / k8s rollout) instead of dropping connections.
+  app.enableShutdownHooks();
+
+  // Swagger maps the entire API surface — expose it only outside production.
+  if (!isProduction) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('CredFlow API')
+      .setDescription('Credit & Loan Management Platform')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
 
   const port = config.get<number>('port', 3333);
   await app.listen(port, '0.0.0.0');
   logger.log(`CredFlow API running on http://localhost:${port}/api`);
-  logger.log(`Swagger docs at http://localhost:${port}/api/docs`);
+  if (!isProduction) logger.log(`Swagger docs at http://localhost:${port}/api/docs`);
 }
 
 bootstrap();

@@ -10,7 +10,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
 import { buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
 import { addMonths, daysBetween, startOfDay } from '../../common/utils/date.util';
-import { computeCet, computeOutstanding, simulate } from '../../domain/finance/finance';
+import { clampCet, computeCet, computeOutstanding, simulate } from '../../domain/finance/finance';
 import { centsToDecimal, reaisToCents } from '../../domain/finance/money';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import {
@@ -21,6 +21,17 @@ import {
 } from './dto/collection.dto';
 
 const ACTIVE_CASE_STATUSES: CollectionStatus[] = ['IN_PROGRESS', 'PROMISE', 'NEGOTIATING'];
+
+// Allowed manual case-status transitions. WRITTEN_OFF is terminal; RESOLVED may
+// only be reopened to IN_PROGRESS. Prevents nonsensical jumps (e.g. un-writing-off).
+const CASE_TRANSITIONS: Record<CollectionStatus, CollectionStatus[]> = {
+  OPEN: ['IN_PROGRESS', 'NEGOTIATING', 'PROMISE', 'RESOLVED', 'WRITTEN_OFF'],
+  IN_PROGRESS: ['NEGOTIATING', 'PROMISE', 'RESOLVED', 'WRITTEN_OFF'],
+  NEGOTIATING: ['IN_PROGRESS', 'PROMISE', 'RESOLVED', 'WRITTEN_OFF'],
+  PROMISE: ['IN_PROGRESS', 'NEGOTIATING', 'RESOLVED', 'WRITTEN_OFF'],
+  RESOLVED: ['IN_PROGRESS'],
+  WRITTEN_OFF: [],
+};
 
 @Injectable()
 export class CollectionsService {
@@ -34,8 +45,16 @@ export class CollectionsService {
    * Re-evaluates a single contract's arrears: flags overdue installments,
    * opens/updates/closes the collection case and toggles DEFAULTED/ACTIVE.
    */
-  async refreshContract(contractId: string) {
-    const contract = await this.prisma.contract.findUnique({
+  async refreshContract(contractId: string, txClient?: Prisma.TransactionClient) {
+    // Always runs atomically: either inside a caller's transaction (e.g. the
+    // payment flow) or in its own. The flag-overdue / open-case / toggle-status
+    // writes used to run as separate statements and could half-apply on a crash.
+    if (txClient) return this.refreshContractTx(contractId, txClient);
+    return this.prisma.$transaction((tx) => this.refreshContractTx(contractId, tx));
+  }
+
+  private async refreshContractTx(contractId: string, tx: Prisma.TransactionClient) {
+    const contract = await tx.contract.findUnique({
       where: { id: contractId },
       include: { installments: true },
     });
@@ -67,18 +86,18 @@ export class CollectionsService {
     }
 
     if (overdueIds.length) {
-      await this.prisma.installment.updateMany({
+      await tx.installment.updateMany({
         where: { id: { in: overdueIds }, status: { notIn: ['PAID', 'CANCELLED', 'RENEGOTIATED'] } },
         data: { status: InstallmentStatus.OVERDUE },
       });
     }
 
     if (maxDays > 0) {
-      const existing = await this.prisma.collectionCase.findUnique({ where: { contractId } });
+      const existing = await tx.collectionCase.findUnique({ where: { contractId } });
       const nextStatus: CollectionStatus =
         existing && ACTIVE_CASE_STATUSES.includes(existing.status) ? existing.status : 'OPEN';
 
-      const cse = await this.prisma.collectionCase.upsert({
+      const cse = await tx.collectionCase.upsert({
         where: { contractId },
         create: {
           contractId,
@@ -95,21 +114,50 @@ export class CollectionsService {
       });
 
       if (contract.status !== ContractStatus.DEFAULTED) {
-        await this.prisma.contract.update({ where: { id: contractId }, data: { status: 'DEFAULTED' } });
+        await tx.contract.update({ where: { id: contractId }, data: { status: 'DEFAULTED' } });
+        await this.audit.record({
+          action: 'CONTRACT_DEFAULTED',
+          entity: 'Contract',
+          entityId: contractId,
+          before: { status: contract.status },
+          after: { status: 'DEFAULTED', daysOverdue: maxDays },
+        });
+      }
+      if (!existing) {
+        await this.audit.record({
+          action: 'COLLECTION_OPENED',
+          entity: 'CollectionCase',
+          entityId: cse.id,
+          after: { contractId, daysOverdue: maxDays },
+        });
       }
       return cse;
     }
 
     // No arrears: resolve any open case and reactivate the contract.
-    const existing = await this.prisma.collectionCase.findUnique({ where: { contractId } });
+    const existing = await tx.collectionCase.findUnique({ where: { contractId } });
     if (existing && existing.status !== 'RESOLVED' && existing.status !== 'WRITTEN_OFF') {
-      await this.prisma.collectionCase.update({
+      await tx.collectionCase.update({
         where: { contractId },
         data: { status: 'RESOLVED', resolvedAt: new Date(), daysOverdue: 0, totalOverdue: 0 },
       });
+      await this.audit.record({
+        action: 'COLLECTION_RESOLVED',
+        entity: 'CollectionCase',
+        entityId: existing.id,
+        before: { status: existing.status },
+        after: { status: 'RESOLVED' },
+      });
     }
     if (contract.status === ContractStatus.DEFAULTED) {
-      await this.prisma.contract.update({ where: { id: contractId }, data: { status: 'ACTIVE' } });
+      await tx.contract.update({ where: { id: contractId }, data: { status: 'ACTIVE' } });
+      await this.audit.record({
+        action: 'CONTRACT_REACTIVATED',
+        entity: 'Contract',
+        entityId: contractId,
+        before: { status: 'DEFAULTED' },
+        after: { status: 'ACTIVE' },
+      });
     }
     return null;
   }
@@ -170,12 +218,15 @@ export class CollectionsService {
 
   async addInteraction(caseId: string, dto: CreateInteractionDto, actorId?: string) {
     await this.ensureCase(caseId);
-    const interaction = await this.prisma.collectionInteraction.create({
-      data: { caseId, channel: dto.channel, notes: dto.notes, createdById: actorId },
-    });
-    await this.prisma.collectionCase.updateMany({
-      where: { id: caseId, status: 'OPEN' },
-      data: { status: 'IN_PROGRESS' },
+    const interaction = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.collectionInteraction.create({
+        data: { caseId, channel: dto.channel, notes: dto.notes, createdById: actorId },
+      });
+      await tx.collectionCase.updateMany({
+        where: { id: caseId, status: 'OPEN' },
+        data: { status: 'IN_PROGRESS' },
+      });
+      return created;
     });
     await this.audit.record({ userId: actorId, action: 'COLLECTION_INTERACTION', entity: 'CollectionCase', entityId: caseId, after: { channel: dto.channel } });
     return interaction;
@@ -183,16 +234,19 @@ export class CollectionsService {
 
   async addPromise(caseId: string, dto: CreatePromiseDto, actorId?: string) {
     await this.ensureCase(caseId);
-    const promise = await this.prisma.paymentPromise.create({
-      data: {
-        caseId,
-        amount: dto.amount,
-        promisedDate: new Date(dto.promisedDate),
-        notes: dto.notes,
-        createdById: actorId,
-      },
+    const promise = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.paymentPromise.create({
+        data: {
+          caseId,
+          amount: dto.amount,
+          promisedDate: new Date(dto.promisedDate),
+          notes: dto.notes,
+          createdById: actorId,
+        },
+      });
+      await tx.collectionCase.update({ where: { id: caseId }, data: { status: 'PROMISE' } });
+      return created;
     });
-    await this.prisma.collectionCase.update({ where: { id: caseId }, data: { status: 'PROMISE' } });
     await this.audit.record({ userId: actorId, action: 'PAYMENT_PROMISE', entity: 'CollectionCase', entityId: caseId, after: { amount: dto.amount, promisedDate: dto.promisedDate } });
     return promise;
   }
@@ -206,12 +260,15 @@ export class CollectionsService {
   }
 
   async updateCaseStatus(caseId: string, status: CollectionStatus, actorId?: string) {
-    await this.ensureCase(caseId);
+    const cse = await this.ensureCase(caseId);
+    if (cse.status !== status && !CASE_TRANSITIONS[cse.status].includes(status)) {
+      throw new BadRequestException(`Invalid case transition: ${cse.status} -> ${status}`);
+    }
     const updated = await this.prisma.collectionCase.update({
       where: { id: caseId },
       data: { status, resolvedAt: status === 'RESOLVED' || status === 'WRITTEN_OFF' ? new Date() : null },
     });
-    await this.audit.record({ userId: actorId, action: 'COLLECTION_STATUS', entity: 'CollectionCase', entityId: caseId, after: { status } });
+    await this.audit.record({ userId: actorId, action: 'COLLECTION_STATUS', entity: 'CollectionCase', entityId: caseId, before: { status: cse.status }, after: { status } });
     return updated;
   }
 
@@ -225,8 +282,8 @@ export class CollectionsService {
       include: { installments: true },
     });
     if (!contract) throw new NotFoundException('Contract not found');
-    if (['CANCELLED', 'RENEGOTIATED'].includes(contract.status)) {
-      throw new BadRequestException('Contract cannot be renegotiated in its current status');
+    if (!['ACTIVE', 'DEFAULTED'].includes(contract.status)) {
+      throw new BadRequestException('Only ACTIVE or DEFAULTED contracts can be renegotiated');
     }
 
     const today = startOfDay(new Date());
@@ -236,16 +293,28 @@ export class CollectionsService {
       if (['PAID', 'CANCELLED', 'RENEGOTIATED'].includes(inst.status)) continue;
       unpaidIds.push(inst.id);
       const daysLate = daysBetween(startOfDay(inst.dueDate), today);
-      const o = computeOutstanding({
-        amountDueCents: reaisToCents(inst.amountDue),
-        amountPaidCents: reaisToCents(inst.amountPaid),
-        lateFeePaidCents: reaisToCents(inst.lateFee),
-        lateInterestPaidCents: reaisToCents(inst.lateInterest),
-        daysLate: Math.max(0, daysLate),
-        fineRate: Number(contract.lateFeeRate),
-        monthlyInterestRate: Number(contract.lateInterestRate),
-      });
-      outstandingCents += o.totalOutstandingCents;
+      if (daysLate > 0) {
+        // Overdue: consolidate the full outstanding base + accrued fine/mora.
+        const o = computeOutstanding({
+          amountDueCents: reaisToCents(inst.amountDue),
+          amountPaidCents: reaisToCents(inst.amountPaid),
+          lateFeePaidCents: reaisToCents(inst.lateFee),
+          lateInterestPaidCents: reaisToCents(inst.lateInterest),
+          daysLate,
+          fineRate: Number(contract.lateFeeRate),
+          monthlyInterestRate: Number(contract.lateInterestRate),
+        });
+        outstandingCents += o.totalOutstandingCents;
+      } else {
+        // Not yet due: consolidate only the remaining PRINCIPAL. Capitalizing the
+        // unaccrued future interest (amountDue) would charge interest-on-interest
+        // — renegotiating a not-yet-incurred period behaves like an early payoff.
+        const amountPaidCents = reaisToCents(inst.amountPaid);
+        const interestDueCents = reaisToCents(inst.interestDue);
+        const principalDueCents = reaisToCents(inst.principalDue);
+        const principalPaid = Math.max(0, amountPaidCents - interestDueCents); // interest-first
+        outstandingCents += Math.max(0, principalDueCents - principalPaid);
+      }
     }
     if (outstandingCents <= 0) throw new BadRequestException('Contract has no outstanding balance to renegotiate');
 
@@ -276,7 +345,7 @@ export class CollectionsService {
             termMonths: dto.termMonths,
             totalAmount: centsToDecimal(sim.totalAmountCents),
             totalInterest: centsToDecimal(sim.totalInterestCents),
-            cetAnnual: Math.round(cet.annual * 1e6) / 1e6,
+            cetAnnual: Math.round(clampCet(cet.annual) * 1e6) / 1e6,
             lateFeeRate: Number(contract.lateFeeRate),
             lateInterestRate: Number(contract.lateInterestRate),
             startDate,

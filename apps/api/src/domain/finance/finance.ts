@@ -75,22 +75,25 @@ function buildSacSchedule(P: number, i: number, n: number): ScheduleEntry[] {
 
 function buildSimpleSchedule(P: number, i: number, n: number): ScheduleEntry[] {
   const totalInterest = roundCents(P * i * n);
-  const total = P + totalInterest;
-  const installment = roundCents(total / n);
-  const basePrincipal = roundCents(P / n);
   const schedule: ScheduleEntry[] = [];
   let balance = P;
+  let cumPrincipal = 0;
+  let cumInterest = 0;
   for (let k = 1; k <= n; k++) {
-    let principal: number;
-    let amount: number;
-    if (k < n) {
-      principal = basePrincipal;
-      amount = installment;
-    } else {
-      principal = balance;
-      amount = total - installment * (n - 1); // close exactly
-    }
-    const interest = amount - principal;
+    // Cumulative ("largest remainder") rounding: each period's value is the
+    // difference of rounded running totals. This guarantees every row's
+    // principal/interest is **non-negative**, the per-period amounts stay
+    // within a cent of each other, and the sums tie out exactly to P and
+    // totalInterest — the last installment still absorbs the residue, but no
+    // row can ever go negative (the previous `total - installment*(n-1)` form
+    // produced a negative last installment for sub-cent installment sizes).
+    const nextCumPrincipal = roundCents((P * k) / n);
+    const nextCumInterest = roundCents((totalInterest * k) / n);
+    const principal = nextCumPrincipal - cumPrincipal;
+    const interest = nextCumInterest - cumInterest;
+    cumPrincipal = nextCumPrincipal;
+    cumInterest = nextCumInterest;
+    const amount = principal + interest;
     balance -= principal;
     schedule.push({ number: k, principal, interest, amount, balance: Math.max(balance, 0) });
   }
@@ -137,11 +140,18 @@ export function computeMonthlyIrr(releasedCents: number, payments: number[]): nu
   const npv = (rate: number): number =>
     payments.reduce((acc, pmt, idx) => acc + pmt / Math.pow(1 + rate, idx + 1), 0) - releasedCents;
 
-  let low = 0;
-  let high = 5; // 500%/month upper bound — far beyond any realistic CET
-  if (npv(low) <= 0) return 0; // no positive cost (released >= sum of payments)
+  if (npv(0) <= 0) return 0; // no positive cost (released >= sum of payments)
 
-  for (let iter = 0; iter < 200; iter++) {
+  // Expand the upper bound until it actually brackets the root. The old fixed
+  // `high = 5` silently returned ~5 (and a garbage CET) whenever the true IRR
+  // exceeded 500%/month; adaptive expansion keeps the result correct for any
+  // effective rate the inputs imply.
+  let low = 0;
+  let high = 1; // 100%/month starting bound
+  const HIGH_CAP = 1e6;
+  while (npv(high) > 0 && high < HIGH_CAP) high *= 2;
+
+  for (let iter = 0; iter < 300; iter++) {
     const mid = (low + high) / 2;
     const value = npv(mid);
     if (Math.abs(value) < 1e-6) return mid;
@@ -159,6 +169,32 @@ export function computeCet(
   const monthly = computeMonthlyIrr(releasedCents, payments);
   const annual = Math.pow(1 + monthly, 12) - 1;
   return { monthly, annual };
+}
+
+/**
+ * Largest magnitude representable by the CET columns (`Decimal(12,6)` — six
+ * integer digits, six fractional). A 200%/month loan annualises to ~4095, well
+ * inside this; the clamp only ever fires on absurd, non-amortizing inputs and
+ * exists purely so a persist can never throw a numeric-overflow (Postgres
+ * 22003) on a regulated disclosure field.
+ */
+export const CET_MAX = 999999.999999;
+
+/** Clamp a CET fraction to the persisted `Decimal(12,6)` domain (defensive). */
+export function clampCet(value: number): number {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return Math.min(value, CET_MAX);
+}
+
+/**
+ * True when a PRICE schedule never amortizes — i.e. a non-final installment
+ * pays zero (or negative) principal because the fixed payment does not even
+ * cover the period's interest. Such a "loan" is really a balloon and should be
+ * rejected at the product boundary rather than silently generated.
+ */
+export function isNonAmortizing(schedule: ScheduleEntry[]): boolean {
+  if (schedule.length <= 1) return false;
+  return schedule.slice(0, -1).some((e) => e.principal <= 0);
 }
 
 export interface ContractCostingInput {
@@ -239,17 +275,28 @@ export function computeLateCharges(
   daysLate: number,
   fineRate: number,
   monthlyInterestRate: number,
+  options?: { maxInterestCents?: number },
 ): LateCharges {
-  if (daysLate <= 0 || outstandingCents <= 0) {
-    return { fineCents: 0, interestCents: 0, totalCents: outstandingCents };
+  // Defensive clamps: negative rates/days/amounts must never produce negative
+  // charges (the rates come from mutable Contract columns).
+  const safeOutstanding = Math.max(0, outstandingCents);
+  const safeDays = Math.max(0, daysLate);
+  const safeFineRate = Math.max(0, fineRate);
+  const safeMonthlyRate = Math.max(0, monthlyInterestRate);
+  if (safeDays <= 0 || safeOutstanding <= 0) {
+    return { fineCents: 0, interestCents: 0, totalCents: safeOutstanding };
   }
-  const fineCents = roundCents(outstandingCents * fineRate);
-  const dailyRate = monthlyInterestRate / 30;
-  const interestCents = roundCents(outstandingCents * dailyRate * daysLate);
+  const fineCents = roundCents(safeOutstanding * safeFineRate);
+  const dailyRate = safeMonthlyRate / 30;
+  let interestCents = roundCents(safeOutstanding * dailyRate * safeDays);
+  // Optional ceiling so arrears interest can't grow without bound over years.
+  if (options?.maxInterestCents != null) {
+    interestCents = Math.min(interestCents, Math.max(0, options.maxInterestCents));
+  }
   return {
     fineCents,
     interestCents,
-    totalCents: outstandingCents + fineCents + interestCents,
+    totalCents: safeOutstanding + fineCents + interestCents,
   };
 }
 
@@ -305,6 +352,10 @@ export function computeOutstanding(input: OutstandingInput): OutstandingState {
     input.daysLate,
     input.fineRate,
     input.monthlyInterestRate,
+    // Cap arrears interest (mora) at 100% of the overdue base, so total
+    // exposure on an installment can never exceed roughly double the base —
+    // a sane contractual ceiling instead of unbounded multi-year accrual.
+    { maxInterestCents: baseOutstandingCents },
   );
   const fineOutstandingCents = Math.max(0, gross.fineCents - input.lateFeePaidCents);
   const interestOutstandingCents = Math.max(0, gross.interestCents - input.lateInterestPaidCents);

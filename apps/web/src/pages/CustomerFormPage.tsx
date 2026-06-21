@@ -138,33 +138,33 @@ export function CustomerFormPage() {
         <section className="card space-y-4 p-6">
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">Identificação</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Tipo">
-              <select className="input" {...register('type')}>
+            <Field label="Tipo" htmlFor="cf-type">
+              <select id="cf-type" className="input" {...register('type')}>
                 <option value="INDIVIDUAL">Pessoa Física</option>
                 <option value="COMPANY">Pessoa Jurídica</option>
               </select>
             </Field>
-            <Field label="Status">
-              <select className="input" {...register('status')}>
+            <Field label="Status" htmlFor="cf-status">
+              <select id="cf-status" className="input" {...register('status')}>
                 <option value="PROSPECT">Prospect</option>
                 <option value="ACTIVE">Ativo</option>
                 <option value="INACTIVE">Inativo</option>
                 <option value="BLOCKED">Bloqueado</option>
               </select>
             </Field>
-            <Field label={type === 'COMPANY' ? 'Razão social' : 'Nome completo'} error={errors.name?.message}>
-              <input className="input" {...register('name')} />
+            <Field label={type === 'COMPANY' ? 'Razão social' : 'Nome completo'} htmlFor="cf-name" error={errors.name?.message}>
+              <input id="cf-name" className="input" {...register('name')} />
             </Field>
             {type === 'COMPANY' && (
-              <Field label="Nome fantasia">
-                <input className="input" {...register('tradeName')} />
+              <Field label="Nome fantasia" htmlFor="cf-tradeName">
+                <input id="cf-tradeName" className="input" {...register('tradeName')} />
               </Field>
             )}
-            <Field label={type === 'COMPANY' ? 'CNPJ' : 'CPF'} error={errors.document?.message}>
-              <input className="input" placeholder="apenas dígitos ou formatado" {...register('document')} />
+            <Field label={type === 'COMPANY' ? 'CNPJ' : 'CPF'} htmlFor="cf-document" error={errors.document?.message}>
+              <input id="cf-document" className="input" placeholder="apenas dígitos ou formatado" {...register('document')} />
             </Field>
-            <Field label={type === 'COMPANY' ? 'Data de fundação' : 'Data de nascimento'}>
-              <input type="date" className="input" {...register(type === 'COMPANY' ? 'foundationDate' : 'birthDate')} />
+            <Field label={type === 'COMPANY' ? 'Data de fundação' : 'Data de nascimento'} htmlFor="cf-date">
+              <input id="cf-date" type="date" className="input" {...register(type === 'COMPANY' ? 'foundationDate' : 'birthDate')} />
             </Field>
           </div>
         </section>
@@ -172,20 +172,20 @@ export function CustomerFormPage() {
         <section className="card space-y-4 p-6">
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">Contato e perfil financeiro</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="E-mail" error={errors.email?.message}>
-              <input className="input" {...register('email')} />
+            <Field label="E-mail" htmlFor="cf-email" error={errors.email?.message}>
+              <input id="cf-email" className="input" {...register('email')} />
             </Field>
-            <Field label="Telefone">
-              <input className="input" {...register('phone')} />
+            <Field label="Telefone" htmlFor="cf-phone">
+              <input id="cf-phone" className="input" {...register('phone')} />
             </Field>
-            <Field label={type === 'COMPANY' ? 'Ramo de atividade' : 'Profissão'}>
-              <input className="input" {...register('occupation')} />
+            <Field label={type === 'COMPANY' ? 'Ramo de atividade' : 'Profissão'} htmlFor="cf-occupation">
+              <input id="cf-occupation" className="input" {...register('occupation')} />
             </Field>
-            <Field label={type === 'COMPANY' ? 'Faturamento mensal (R$)' : 'Renda mensal (R$)'}>
-              <input type="number" step="0.01" className="input" {...register('monthlyIncome')} />
+            <Field label={type === 'COMPANY' ? 'Faturamento mensal (R$)' : 'Renda mensal (R$)'} htmlFor="cf-monthlyIncome">
+              <input id="cf-monthlyIncome" type="number" step="0.01" className="input" {...register('monthlyIncome')} />
             </Field>
-            <Field label="Score interno (0–1000)">
-              <input type="number" className="input" {...register('internalScore')} />
+            <Field label="Score interno (0–1000)" htmlFor="cf-internalScore">
+              <input id="cf-internalScore" type="number" className="input" {...register('internalScore')} />
             </Field>
           </div>
         </section>
@@ -193,18 +193,18 @@ export function CustomerFormPage() {
         <section className="card space-y-4 p-6">
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">Endereço</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
-            <div className="sm:col-span-4"><Field label="Logradouro"><input className="input" {...register('street')} /></Field></div>
-            <div className="sm:col-span-2"><Field label="Número"><input className="input" {...register('number')} /></Field></div>
-            <div className="sm:col-span-3"><Field label="Bairro"><input className="input" {...register('district')} /></Field></div>
-            <div className="sm:col-span-3"><Field label="Cidade"><input className="input" {...register('city')} /></Field></div>
-            <div className="sm:col-span-4"><Field label="CEP"><input className="input" {...register('zipCode')} /></Field></div>
-            <div className="sm:col-span-2"><Field label="UF"><input maxLength={2} className="input uppercase" {...register('state')} /></Field></div>
+            <div className="sm:col-span-4"><Field label="Logradouro" htmlFor="cf-street"><input id="cf-street" className="input" {...register('street')} /></Field></div>
+            <div className="sm:col-span-2"><Field label="Número" htmlFor="cf-number"><input id="cf-number" className="input" {...register('number')} /></Field></div>
+            <div className="sm:col-span-3"><Field label="Bairro" htmlFor="cf-district"><input id="cf-district" className="input" {...register('district')} /></Field></div>
+            <div className="sm:col-span-3"><Field label="Cidade" htmlFor="cf-city"><input id="cf-city" className="input" {...register('city')} /></Field></div>
+            <div className="sm:col-span-4"><Field label="CEP" htmlFor="cf-zipCode"><input id="cf-zipCode" className="input" {...register('zipCode')} /></Field></div>
+            <div className="sm:col-span-2"><Field label="UF" htmlFor="cf-state"><input id="cf-state" maxLength={2} className="input uppercase" {...register('state')} /></Field></div>
           </div>
         </section>
 
         <section className="card p-6">
-          <Field label="Observações">
-            <textarea rows={3} className="input" {...register('notes')} />
+          <Field label="Observações" htmlFor="cf-notes">
+            <textarea id="cf-notes" rows={3} className="input" {...register('notes')} />
           </Field>
         </section>
 
@@ -220,10 +220,10 @@ export function CustomerFormPage() {
   );
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="label">{label}</label>
+      <label className="label" htmlFor={htmlFor}>{label}</label>
       {children}
       {error && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
     </div>

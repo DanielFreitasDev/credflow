@@ -68,6 +68,7 @@ Framework-free, no Prisma/NestJS imports, 100% unit-tested (`.spec.ts` files sit
 - Each business module: `modules/<name>/` = `*.controller.ts` + `*.service.ts` + `*.module.ts` + `dto/`. Business logic lives in services; controllers are thin.
 - Cross-cutting in `common/`: `audit/`, `crypto/`, `decorators/`, `filters/`, `interceptors/`, `utils/`. Env in `config/`. `prisma/` wraps `PrismaService`.
 - **Globals registered in `app.module.ts`** (guard order matters): `ThrottlerGuard` → `JwtAuthGuard` → `RolesGuard`; plus `AllExceptionsFilter` and `LoggingInterceptor`. The global `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `transform`) is set in `main.ts` — DTOs must declare every accepted field or requests are rejected.
+- `main.ts` enables graceful shutdown hooks and **only mounts Swagger (`/api/docs`) when `NODE_ENV !== 'production'`**. Public health endpoints: `GET /api/health` (liveness) and `GET /api/health/ready` (readiness — pings the DB). `/auth/login` and `/auth/refresh` carry stricter per-route throttling than the global limit.
 - Path alias: `src/*` (see `tsconfig.json`).
 
 ### Auth & RBAC
@@ -101,12 +102,12 @@ Status changes are validated, not free-form. When editing these flows, keep the 
 ### Frontend
 - `lib/api.ts` — single Axios instance. Request interceptor attaches the bearer token; response interceptor does a **single refresh-and-retry on 401** (deduped through a shared `refreshing` promise) and bounces to `/login` on failure. Tokens live in `localStorage`. Auth routes are excluded from the retry.
 - Routing in `App.tsx`: `ProtectedRoute` wraps `Layout` wraps the pages.
-- Server state via **TanStack Query** (`lib/hooks.ts`); forms via **React Hook Form + Zod**; shared types in `lib/types.ts`.
+- Server state via **TanStack Query** — `useQuery`/`useMutation` calls are written **inline per page**, not in a shared hooks file (`lib/hooks.ts` only exports `useDebounce`). Forms via **React Hook Form + Zod**; shared types in `lib/types.ts`.
 - **Theming / dark mode**: Tailwind `darkMode: 'class'`. `lib/theme.tsx` (`ThemeProvider`/`useTheme`) toggles the `dark` class on `<html>`, persists to `localStorage` (`credflow.theme`), and falls back to `prefers-color-scheme`. An inline script in `index.html` applies the theme **before paint** (no FOUC) — keep its storage key in sync with `theme.tsx`. New UI must carry `dark:` variants (palette: surfaces `slate-900/950`, text `slate-100→400`, borders `slate-700/800`, soft accents `{color}-500/10`). Recharts renders SVG outside Tailwind, so its colors are themed explicitly via `useTheme()` in `DashboardPage`.
 - **Branding**: `components/Logo.tsx` renders the lockup — the brand **symbol** (`public/brand/credflow_symbol_tight.svg`, a tight-cropped viewBox so it reads large at small box sizes) + a live-text "CredFlow" wordmark (`Flow` in the brand gradient `#255EEB→#16C7E6→#30D17A`), no micro-subtitle. Used in the sidebar (`Layout.tsx`, `size="sm"`) and login (`LoginPage.tsx`, `size="lg" onDark`). `onDark` forces a light wordmark on the always-dark login (the theme `dark:` variant can't be relied on there). Favicon `public/favicon.svg`; app icon `public/brand/credflow_app_icon.png` (also the `apple-touch-icon`); full horizontal lockup SVGs also live in `public/brand/`. The `brand-*` Tailwind scale is a blue ramp anchored to **Trust Blue `#255eeb` at `600`** (the brand primary) — use `brand-*` for accents; chart hexes in `DashboardPage` mirror it (`#255eeb`). Source brand kit: `credflow_logo_package/credflow_brand/`.
 
 ## Database
-- Schema: `apps/api/prisma/schema.prisma` (single migration `0_init` so far). Money columns are `Decimal(14,2)`, rates `Decimal(9,6)`.
+- Schema: `apps/api/prisma/schema.prisma` (16 models). Two migrations so far: `0_init` (base schema) and `20260621000000_protect_customer_document` (CPF/CNPJ encryption + blind index). Money columns are `Decimal(14,2)`, rates `Decimal(9,6)`.
 - In Docker, `docker-entrypoint.sh` runs `prisma migrate deploy` then `prisma db seed` automatically before starting. Locally you run these yourself.
 - The seed (`prisma/seed.ts`) is idempotent and creates one user per role plus demo customers/proposals/contracts/payments and an overdue collection case.
 

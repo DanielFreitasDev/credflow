@@ -7,10 +7,15 @@ import {
 import { ContractStatus, Prisma, ProposalStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
+import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common/utils/pagination.util';
 import { buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
 import { addMonths, daysBetween, startOfDay } from '../../common/utils/date.util';
-import { computeContractCosting, computeOutstanding } from '../../domain/finance/finance';
+import {
+  clampCet,
+  computeContractCosting,
+  computeOutstanding,
+  isNonAmortizing,
+} from '../../domain/finance/finance';
 import { centsToDecimal, centsToReais, reaisToCents } from '../../domain/finance/money';
 import { ProposalsService } from '../proposals/proposals.service';
 import { EncryptionService } from '../../common/crypto/encryption.service';
@@ -33,6 +38,11 @@ export class ContractsService {
     }
     if (!proposal.analysis || proposal.analysis.decision !== 'APPROVED') {
       throw new BadRequestException('Proposal has no approved credit analysis');
+    }
+    // Re-check the customer status at contracting time — it may have been
+    // blocked after the proposal was created/approved.
+    if (proposal.customer.status === 'BLOCKED') {
+      throw new BadRequestException('Customer is blocked and cannot be contracted');
     }
     const existing = await this.prisma.contract.findUnique({ where: { proposalId } });
     if (existing) throw new ConflictException('Proposal already has a contract');
@@ -58,6 +68,11 @@ export class ContractsService {
       termMonths: proposal.termMonths,
       amortization: proposal.amortizationType,
     });
+    if (proposal.amortizationType === 'PRICE' && isNonAmortizing(costing.schedule)) {
+      throw new BadRequestException(
+        'A taxa é alta demais para o prazo: as parcelas não amortizam o principal.',
+      );
+    }
 
     const startDate = dto.startDate ? new Date(dto.startDate) : new Date();
     const firstDueDate = dto.firstDueDate ? new Date(dto.firstDueDate) : addMonths(startDate, 1);
@@ -88,7 +103,7 @@ export class ContractsService {
             totalInterest: centsToDecimal(costing.totalInterestCents),
             iofAmount: centsToDecimal(costing.iofCents),
             tacAmount: centsToDecimal(costing.tacCents),
-            cetAnnual: Math.round(costing.cetAnnual * 1e6) / 1e6,
+            cetAnnual: Math.round(clampCet(costing.cetAnnual) * 1e6) / 1e6,
             lateFeeRate: dto.lateFeeRate ?? 0.02,
             lateInterestRate: dto.lateInterestRate ?? 0.01,
             startDate,
@@ -156,7 +171,7 @@ export class ContractsService {
         where,
         skip,
         take,
-        orderBy: { [query.sortBy ?? 'createdAt']: query.sortOrder },
+        orderBy: resolveOrderBy(query.sortBy, ['createdAt', 'number', 'principal', 'status'], query.sortOrder),
         include: {
           customer: { select: { id: true, name: true, document: true, type: true } },
           installments: { select: { amountDue: true, amountPaid: true, status: true } },
@@ -230,46 +245,80 @@ export class ContractsService {
   }
 
   async cancel(id: string, actorId?: string) {
-    const contract = await this.ensureExists(id);
-    const paymentsCount = await this.prisma.payment.count({ where: { contractId: id } });
-    if (paymentsCount > 0) {
-      throw new BadRequestException('Cannot cancel a contract that already has payments; use renegotiation');
-    }
-    const updated = await this.prisma.contract.update({
-      where: { id },
-      data: {
-        status: ContractStatus.CANCELLED,
-        installments: { updateMany: { where: { contractId: id }, data: { status: 'CANCELLED' } } },
-      },
+    // Lock + count + update in one transaction so a payment can't slip in
+    // between the guard and the cancel (TOCTOU).
+    const { before } = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Contract" WHERE id = ${id} FOR UPDATE`;
+      const contract = await tx.contract.findUnique({ where: { id } });
+      if (!contract) throw new NotFoundException('Contract not found');
+      const paymentsCount = await tx.payment.count({ where: { contractId: id } });
+      if (paymentsCount > 0) {
+        throw new BadRequestException('Cannot cancel a contract that already has payments; use renegotiation');
+      }
+      await tx.contract.update({
+        where: { id },
+        data: {
+          status: ContractStatus.CANCELLED,
+          installments: { updateMany: { where: { contractId: id }, data: { status: 'CANCELLED' } } },
+        },
+      });
+      return { before: contract.status };
     });
     await this.audit.record({
       userId: actorId,
       action: 'CANCEL',
       entity: 'Contract',
       entityId: id,
-      before: { status: contract.status },
+      before: { status: before },
       after: { status: 'CANCELLED' },
     });
-    return updated;
+    return this.findOne(id);
   }
 
-  /** Marks a contract SETTLED once every installment is paid/cancelled. */
-  async recomputeContractStatus(contractId: string): Promise<void> {
-    const installments = await this.prisma.installment.findMany({
+  /**
+   * Marks a contract SETTLED once every installment is paid/cancelled (or back
+   * to ACTIVE if a settlement is reversed). Accepts a transaction client so it
+   * can run atomically inside the payment flow.
+   */
+  async recomputeContractStatus(
+    contractId: string,
+    txClient?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = txClient ?? this.prisma;
+    const installments = await db.installment.findMany({
       where: { contractId },
       select: { status: true },
     });
-    const allDone = installments.every((i) => i.status === 'PAID' || i.status === 'CANCELLED');
-    const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
+    const allDone =
+      installments.length > 0 &&
+      installments.every((i) => i.status === 'PAID' || i.status === 'CANCELLED');
+    const contract = await db.contract.findUnique({ where: { id: contractId } });
     if (!contract) return;
 
     if (allDone && contract.status !== 'SETTLED' && contract.status !== 'CANCELLED') {
-      await this.prisma.contract.update({
+      await db.contract.update({
         where: { id: contractId },
         data: { status: 'SETTLED', settledAt: new Date() },
       });
+      await this.audit.record({
+        action: 'CONTRACT_SETTLED',
+        entity: 'Contract',
+        entityId: contractId,
+        before: { status: contract.status },
+        after: { status: 'SETTLED' },
+      });
     } else if (!allDone && contract.status === 'SETTLED') {
-      await this.prisma.contract.update({ where: { id: contractId }, data: { status: 'ACTIVE', settledAt: null } });
+      await db.contract.update({
+        where: { id: contractId },
+        data: { status: 'ACTIVE', settledAt: null },
+      });
+      await this.audit.record({
+        action: 'CONTRACT_REACTIVATED',
+        entity: 'Contract',
+        entityId: contractId,
+        before: { status: 'SETTLED' },
+        after: { status: 'ACTIVE' },
+      });
     }
   }
 
@@ -281,30 +330,27 @@ export class ContractsService {
 }
 
 function summarize(installments: { amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal; status: string }[]) {
-  let totalDue = 0;
-  let totalPaid = 0;
-  let outstanding = 0;
-  let overdue = 0;
+  // Aggregate in integer cents (the central invariant) then convert once.
+  let totalDueCents = 0;
+  let totalPaidCents = 0;
+  let outstandingCents = 0;
+  let overdueCents = 0;
   let paidCount = 0;
   for (const i of installments) {
-    const due = Number(i.amountDue);
-    const paid = Number(i.amountPaid);
-    totalDue += due;
-    totalPaid += paid;
+    const due = reaisToCents(i.amountDue);
+    const paid = reaisToCents(i.amountPaid);
+    totalDueCents += due;
+    totalPaidCents += paid;
     if (i.status === 'PAID') paidCount++;
-    if (i.status !== 'PAID' && i.status !== 'CANCELLED') outstanding += due - paid;
-    if (i.status === 'OVERDUE') overdue += due - paid;
+    if (i.status !== 'PAID' && i.status !== 'CANCELLED') outstandingCents += due - paid;
+    if (i.status === 'OVERDUE') overdueCents += due - paid;
   }
   return {
     installmentsCount: installments.length,
     paidCount,
-    totalDue: round2(totalDue),
-    totalPaid: round2(totalPaid),
-    outstanding: round2(outstanding),
-    overdue: round2(overdue),
+    totalDue: centsToReais(totalDueCents),
+    totalPaid: centsToReais(totalPaidCents),
+    outstanding: centsToReais(outstandingCents),
+    overdue: centsToReais(overdueCents),
   };
-}
-
-function round2(v: number): number {
-  return Math.round(v * 100) / 100;
 }

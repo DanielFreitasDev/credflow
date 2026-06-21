@@ -33,6 +33,9 @@ export class AnalysisService {
         `Proposal must be UNDER_REVIEW to be analyzed (current: ${proposal.status})`,
       );
     }
+    if (proposal.customer.status === 'BLOCKED') {
+      throw new BadRequestException('Customer is blocked and cannot be analyzed');
+    }
 
     const customer = proposal.customer;
     const delinquency = await this.hasActiveDelinquency(customer.id);
@@ -51,10 +54,11 @@ export class AnalysisService {
       DEFAULT_POLICY,
     );
 
-    const analysis = await this.prisma.creditAnalysis.upsert({
-      where: { proposalId },
-      create: {
-        proposalId,
+    // The analysis record and the proposal status change must commit together,
+    // otherwise an APPROVED/REJECTED analysis could coexist with an
+    // UNDER_REVIEW proposal if the second write failed.
+    const analysis = await this.prisma.$transaction(async (tx) => {
+      const data = {
         decision: result.decision as AnalysisDecision,
         score: result.score,
         riskBand: result.riskBand as RiskBand,
@@ -64,27 +68,21 @@ export class AnalysisService {
         policyVersion: result.policyVersion,
         automatic: true,
         analystId: actorId,
-      },
-      update: {
-        decision: result.decision as AnalysisDecision,
-        score: result.score,
-        riskBand: result.riskBand as RiskBand,
-        suggestedLimit: result.suggestedLimit,
-        approvedAmount: result.approvedAmount,
-        reasons: result.reasons,
-        policyVersion: result.policyVersion,
-        automatic: true,
-        analystId: actorId,
-      },
+      };
+      const a = await tx.creditAnalysis.upsert({
+        where: { proposalId },
+        create: { proposalId, ...data },
+        update: data,
+      });
+      // Propagate the engine decision to the proposal lifecycle (same tx).
+      if (result.decision === 'APPROVED') {
+        await this.proposals.changeStatus(proposalId, ProposalStatus.APPROVED, actorId, 'Auto-approved by policy', tx);
+      } else if (result.decision === 'REJECTED') {
+        await this.proposals.changeStatus(proposalId, ProposalStatus.REJECTED, actorId, result.reasons.join('; '), tx);
+      }
+      // MANUAL_REVIEW keeps the proposal UNDER_REVIEW for a human decision.
+      return a;
     });
-
-    // Propagate the engine decision to the proposal lifecycle.
-    if (result.decision === 'APPROVED') {
-      await this.proposals.changeStatus(proposalId, ProposalStatus.APPROVED, actorId, 'Auto-approved by policy');
-    } else if (result.decision === 'REJECTED') {
-      await this.proposals.changeStatus(proposalId, ProposalStatus.REJECTED, actorId, result.reasons.join('; '));
-    }
-    // MANUAL_REVIEW keeps the proposal UNDER_REVIEW for a human decision.
 
     await this.audit.record({
       userId: actorId,
@@ -103,6 +101,15 @@ export class AnalysisService {
     if (proposal.status !== ProposalStatus.UNDER_REVIEW) {
       throw new BadRequestException(
         `Proposal must be UNDER_REVIEW to receive a manual decision (current: ${proposal.status})`,
+      );
+    }
+    if (proposal.customer.status === 'BLOCKED') {
+      throw new BadRequestException('Customer is blocked; cannot record a decision');
+    }
+    // A manual approval must not override the hard reject for active delinquency.
+    if (dto.decision === 'APPROVED' && (await this.hasActiveDelinquency(proposal.customer.id))) {
+      throw new BadRequestException(
+        'Cannot manually approve: customer has an active delinquency (defaulted or overdue contract).',
       );
     }
 
@@ -137,35 +144,38 @@ export class AnalysisService {
         ? (dto.approvedAmount ?? Number(proposal.requestedAmount))
         : null;
 
-    const analysis = await this.prisma.creditAnalysis.upsert({
-      where: { proposalId },
-      create: {
+    const analysis = await this.prisma.$transaction(async (tx) => {
+      const a = await tx.creditAnalysis.upsert({
+        where: { proposalId },
+        create: {
+          proposalId,
+          decision: dto.decision,
+          score: evaluated.score,
+          riskBand: evaluated.riskBand as RiskBand,
+          suggestedLimit: evaluated.suggestedLimit,
+          approvedAmount,
+          reasons: [`Decisão manual: ${dto.reason}`],
+          policyVersion: evaluated.policyVersion,
+          automatic: false,
+          analystId: actorId,
+        },
+        update: {
+          decision: dto.decision,
+          approvedAmount,
+          reasons: [`Decisão manual: ${dto.reason}`],
+          automatic: false,
+          analystId: actorId,
+        },
+      });
+      await this.proposals.changeStatus(
         proposalId,
-        decision: dto.decision,
-        score: evaluated.score,
-        riskBand: evaluated.riskBand as RiskBand,
-        suggestedLimit: evaluated.suggestedLimit,
-        approvedAmount,
-        reasons: [`Decisão manual: ${dto.reason}`],
-        policyVersion: evaluated.policyVersion,
-        automatic: false,
-        analystId: actorId,
-      },
-      update: {
-        decision: dto.decision,
-        approvedAmount,
-        reasons: [`Decisão manual: ${dto.reason}`],
-        automatic: false,
-        analystId: actorId,
-      },
+        dto.decision === 'APPROVED' ? ProposalStatus.APPROVED : ProposalStatus.REJECTED,
+        actorId,
+        `Manual: ${dto.reason}`,
+        tx,
+      );
+      return a;
     });
-
-    await this.proposals.changeStatus(
-      proposalId,
-      dto.decision === 'APPROVED' ? ProposalStatus.APPROVED : ProposalStatus.REJECTED,
-      actorId,
-      `Manual: ${dto.reason}`,
-    );
 
     await this.audit.record({
       userId: actorId,

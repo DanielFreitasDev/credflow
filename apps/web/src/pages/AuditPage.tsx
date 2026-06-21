@@ -25,7 +25,7 @@ export function AuditPage() {
       />
       <div className="card">
         <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 p-4">
-          <select className="input w-auto" value={entity} onChange={(e) => { setEntity(e.target.value); setPage(1); }}>
+          <select className="input w-auto" aria-label="Filtrar por entidade" value={entity} onChange={(e) => { setEntity(e.target.value); setPage(1); }}>
             <option value="">Todas as entidades</option>
             {['Customer', 'CreditProposal', 'Contract', 'Installment', 'CollectionCase', 'PaymentPromise', 'User'].map((e) => (
               <option key={e} value={e}>{e}</option>
@@ -49,8 +49,15 @@ export function AuditPage() {
                       <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{log.entity}</span>
                       {log.entityId && <span className="truncate text-xs text-slate-400 dark:text-slate-500">#{log.entityId}</span>}
                     </div>
-                    {(log.after as Record<string, unknown>) && (
-                      <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{JSON.stringify(log.after)}</p>
+                    {log.after != null && (
+                      <details className="mt-1 group">
+                        <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                          Ver dados
+                        </summary>
+                        <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-600 dark:text-slate-300 ring-1 ring-slate-100 dark:ring-slate-800">
+                          {JSON.stringify(log.after, null, 2)}
+                        </pre>
+                      </details>
                     )}
                   </div>
                   <div className="shrink-0 text-right text-xs text-slate-400 dark:text-slate-500">

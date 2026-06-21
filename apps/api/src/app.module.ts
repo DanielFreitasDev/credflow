@@ -22,6 +22,7 @@ import { CollectionsModule } from './modules/collections/collections.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AuditReadModule } from './modules/audit/audit-read.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     DashboardModule,
     AuditReadModule,
     ReportsModule,
+    HealthModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

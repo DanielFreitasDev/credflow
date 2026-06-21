@@ -87,7 +87,19 @@ export class AuthService {
   }
 
   async login(email: string, password: string, meta: RequestMeta): Promise<LoginResult> {
-    const user = await this.validateUser(email, password);
+    let user: User;
+    try {
+      user = await this.validateUser(email, password);
+    } catch (err) {
+      // Record failed attempts for detection/monitoring (best-effort, never throws).
+      await this.audit.record({
+        action: 'LOGIN_FAILED',
+        entity: 'User',
+        after: { email },
+        ip: meta.ip,
+      });
+      throw err;
+    }
     const tokens = await this.issueTokens(user, meta);
     await this.users.touchLastLogin(user.id);
     await this.audit.record({

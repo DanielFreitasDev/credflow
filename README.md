@@ -107,7 +107,7 @@ credflow/
 │   ├── api/                    # Backend NestJS
 │   │   ├── prisma/
 │   │   │   ├── schema.prisma   # modelo de dados
-│   │   │   ├── migrations/     # migration inicial (SQL)
+│   │   │   ├── migrations/     # migrations Prisma (SQL)
 │   │   │   └── seed.ts         # dados de demonstração (idempotente)
 │   │   └── src/
 │   │       ├── domain/finance/ # motor financeiro PURO (+ testes .spec.ts)
@@ -149,7 +149,9 @@ O container da API aplica **migrations** e roda o **seed** automaticamente no st
 |---|---|
 | Frontend | http://localhost:5173 |
 | API | http://localhost:3333/api |
-| Swagger (docs) | http://localhost:3333/api/docs |
+| Swagger (docs) | http://localhost:3333/api/docs (apenas fora de produção) |
+| Health (liveness) | http://localhost:3333/api/health |
+| Health (readiness) | http://localhost:3333/api/health/ready |
 | PostgreSQL | localhost:5432 |
 
 Login inicial: **`admin@credflow.dev` / `Admin@123456`**.
@@ -208,7 +210,8 @@ npm run dev                         # http://localhost:5173
 | `JWT_ACCESS_TTL` | Validade do access token | `900s` |
 | `JWT_REFRESH_TTL` | Validade do refresh token | `7d` |
 | `ENCRYPTION_KEY` | Chave AES-256 (**32 bytes em base64**) | `openssl rand -base64 32` |
-| `THROTTLE_TTL` / `THROTTLE_LIMIT` | Janela (s) e limite de requisições | `60` / `120` |
+| `THROTTLE_TTL` / `THROTTLE_LIMIT` | Janela (s) e limite global de requisições | `60` / `120` |
+| `RUN_SEED` | Roda o seed no start do container (`docker-entrypoint.sh`). **Use `false` em produção.** | `true` |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Admin criado no seed | `admin@credflow.dev` / `Admin@123456` |
 | `VITE_API_URL` | URL da API usada pelo frontend | `http://localhost:3333` |
 
@@ -218,8 +221,8 @@ npm run dev                         # http://localhost:5173
 
 ## 💾 Banco de dados, migrations e seed
 
-- **Schema:** `apps/api/prisma/schema.prisma` (17 modelos, enums nativos).
-- **Migration inicial:** `apps/api/prisma/migrations/0_init/migration.sql` — gerada a partir do schema; aplique com `npx prisma migrate deploy`.
+- **Schema:** `apps/api/prisma/schema.prisma` (16 modelos, enums nativos).
+- **Migrations:** duas até agora — `0_init` (schema base) e `20260621000000_protect_customer_document` (cifra do CPF/CNPJ + blind index). Aplique ambas com `npx prisma migrate deploy`.
 - **Criar novas migrations (dev):** `npx prisma migrate dev --name <nome>`.
 - **Seed (idempotente):** `npm run db:seed` — cria usuários, 10 clientes, propostas em vários status, contratos com parcelas/pagamentos, um caso de cobrança em atraso e propostas standalone. Reexecutar não duplica o ciclo de empréstimos.
 - **Prisma Studio:** `npm run prisma:studio` para inspecionar os dados.
@@ -247,11 +250,22 @@ Frontend: `cd apps/web && npm run typecheck` (e `npm run build` para validar o b
 ## 📚 API e documentação (Swagger)
 
 Documentação interativa em **`http://localhost:3333/api/docs`** (autenticação Bearer persistida).
+O Swagger é exposto **apenas quando `NODE_ENV !== 'production'`** — em produção a rota `/api/docs` não é registrada.
+
+**Health checks** (públicos, sem autenticação):
+
+| Rota | Para quê |
+|---|---|
+| `GET /api/health` | Liveness — responde se o processo está de pé (não toca no banco). |
+| `GET /api/health/ready` | Readiness — faz um ping no PostgreSQL; retorna erro se o banco estiver indisponível. Use em probes do orquestrador/load balancer. |
+
+> **Rate limiting:** as rotas de autenticação `POST /auth/login` e `POST /auth/refresh` têm limite **mais estrito** que o limite global (`THROTTLE_TTL`/`THROTTLE_LIMIT`), para frear força bruta e abuso de refresh.
 
 Principais grupos de rotas (prefixo `/api`):
 
 | Recurso | Rotas (resumo) |
 |---|---|
+| Health | `GET /health` (liveness), `GET /health/ready` (readiness — ping no DB) |
 | Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/change-password` |
 | Clientes | `GET/POST /customers`, `GET/PATCH /customers/:id`, `GET /customers/:id/financial-history`, `PATCH /customers/:id/status\|score` |
 | Propostas | `POST /proposals/simulate`, `GET/POST /proposals`, `GET /proposals/:id`, `POST /proposals/:id/submit\|cancel` |
@@ -304,7 +318,7 @@ Senhas dos perfis no seed: `gerente@credflow.dev / Gerente@123`, `analista@credf
 - **A03 Injection** — Prisma (consultas parametrizadas) + `ValidationPipe` (whitelist, `forbidNonWhitelisted`).
 - **A04 Insecure Design** — máquinas de estado, transações no banco, dinheiro em centavos.
 - **A05 Misconfiguration** — Helmet, CORS restrito por env, validação fail-fast de variáveis.
-- **A07 Auth Failures** — refresh com **rotação e revogação**, verificação contra timing-attack no login, invalidação de sessões na troca de senha, rate limiting.
+- **A07 Auth Failures** — refresh com **rotação e revogação**, verificação contra timing-attack no login, invalidação de sessões na troca de senha, rate limiting (mais **estrito** em `/auth/login` e `/auth/refresh`).
 - **A09 Logging** — trilha de auditoria append-only (`AuditLog`) para operações sensíveis.
 
 ---
@@ -321,11 +335,79 @@ suficiente para o dashboard exibir números reais.
 ## 🚀 Guia de deploy
 
 1. **Banco:** provisione um PostgreSQL gerenciado (RDS, Cloud SQL, Neon, etc.) e configure `DATABASE_URL`.
-2. **Segredos:** gere `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` (`openssl rand -hex 48`) e `ENCRYPTION_KEY` (`openssl rand -base64 32`). **Nunca** use os valores de exemplo em produção.
-3. **API:** build da imagem `apps/api` (multi-stage já incluído). No start, o container roda `prisma migrate deploy` e sobe a API. Rode atrás de HTTPS (proxy/ingress) e ajuste `CORS_ORIGIN` para o domínio do frontend.
-4. **Frontend:** build de `apps/web` com `VITE_API_URL` apontando para a API pública; servido por Nginx (imagem incluída) ou em um CDN/objeto estático.
-5. **Cobrança agendada:** `POST /collections/run` pode ser disparado por um cron/worker diário para atualizar a inadimplência automaticamente.
-6. **Observabilidade:** logs estruturados via `LoggingInterceptor`; adicione APM/metrics conforme a infra.
+2. **Segredos:** gere `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` (`openssl rand -hex 48`) e `ENCRYPTION_KEY` (`openssl rand -base64 32`). **Nunca** use os valores de exemplo em produção — o `.env.example` traz placeholders **não-bootáveis** de propósito.
+3. **API:** build da imagem `apps/api` (multi-stage já incluído). No start, o container roda `prisma migrate deploy` e sobe a API com **graceful shutdown** habilitado (drena conexões ao receber SIGTERM). Defina `NODE_ENV=production` (desativa o Swagger) e ajuste `CORS_ORIGIN` para o domínio do frontend.
+4. **Seed em produção:** defina **`RUN_SEED=false`**. O seed de demonstração só deve rodar em dev/demo; em produção o boot apenas aplica migrations e sobe a API.
+5. **Frontend:** build de `apps/web` com `VITE_API_URL` apontando para a API pública; servido por Nginx (imagem incluída) ou em um CDN/objeto estático.
+6. **Cobrança agendada:** `POST /collections/run` pode ser disparado por um cron/worker diário para atualizar a inadimplência automaticamente.
+7. **Observabilidade:** logs estruturados via `LoggingInterceptor`; use `GET /api/health/ready` como readiness probe e `GET /api/health` como liveness probe; adicione APM/metrics conforme a infra.
+
+### Reverse proxy / TLS
+
+Termine HTTPS num proxy à frente da stack, servindo o frontend estático e encaminhando `/api` para a API. Exemplo **nginx**:
+
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name app.seudominio.com;
+
+  ssl_certificate     /etc/letsencrypt/live/app.seudominio.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/app.seudominio.com/privkey.pem;
+
+  # Frontend estático (build de apps/web)
+  root /var/www/credflow;
+  index index.html;
+  location / {
+    try_files $uri /index.html;            # SPA fallback
+  }
+
+  # API NestJS (prefixo /api)
+  location /api/ {
+    proxy_pass         http://api:3333;     # serviço da API (Docker/rede interna)
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+  }
+}
+
+# Redireciona HTTP → HTTPS
+server {
+  listen 80;
+  server_name app.seudominio.com;
+  return 301 https://$host$request_uri;
+}
+```
+
+Com esse layout o frontend e a API compartilham a mesma origem, então defina **`CORS_ORIGIN=https://app.seudominio.com`** e **`VITE_API_URL=https://app.seudominio.com`** no build.
+
+Alternativa com **Traefik** (labels no `docker-compose`, TLS automático via Let's Encrypt):
+
+```yaml
+labels:
+  - traefik.enable=true
+  - traefik.http.routers.credflow-api.rule=Host(`app.seudominio.com`) && PathPrefix(`/api`)
+  - traefik.http.routers.credflow-api.entrypoints=websecure
+  - traefik.http.routers.credflow-api.tls.certresolver=le
+  - traefik.http.services.credflow-api.loadbalancer.server.port=3333
+```
+
+### Backup e restore
+
+- **Produção:** prefira os **backups automáticos / PITR** (point-in-time recovery) do Postgres gerenciado (RDS, Cloud SQL, Neon). Defina retenção conforme a política e **teste o restore** periodicamente.
+- **Docker (volume `pgdata`):** dump/restore lógicos via `pg_dump`/`pg_restore` rodando dentro do container `db` (o volume nomeado `pgdata` guarda os dados do Postgres):
+
+```bash
+# Backup (custom format, comprimido) para o host
+docker compose exec -T db \
+  pg_dump -U "$POSTGRES_USER" -F c -d "$POSTGRES_DB" > credflow_$(date +%F).dump
+
+# Restore num banco limpo (--clean recria objetos; pare a API antes)
+docker compose exec -T db \
+  pg_restore -U "$POSTGRES_USER" --clean --if-exists -d "$POSTGRES_DB" < credflow_2026-06-21.dump
+```
+
+> Os dados sensíveis (CPF/CNPJ) já estão **cifrados em repouso** no dump — o restore só é utilizável com o **mesmo `ENCRYPTION_KEY`**. Guarde a chave em segredo separado do backup.
 
 ---
 

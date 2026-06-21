@@ -99,12 +99,12 @@ function CreateUserModal({ open, onClose, onDone }: { open: boolean; onClose: ()
   return (
     <Modal open={open} onClose={onClose} title="Novo usuário">
       <div className="space-y-4">
-        <div><label className="label">Nome</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
-        <div><label className="label">E-mail</label><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-        <div><label className="label">Senha</label><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mín. 8 caracteres, maiúscula, minúscula e número" /></div>
+        <div><label className="label" htmlFor="user-name">Nome</label><input id="user-name" className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div><label className="label" htmlFor="user-email">E-mail</label><input id="user-email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+        <div><label className="label" htmlFor="user-password">Senha</label><input id="user-password" className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mín. 8 caracteres, maiúscula, minúscula e número" /></div>
         <div>
-          <label className="label">Perfil</label>
-          <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
+          <label className="label" htmlFor="user-role">Perfil</label>
+          <select id="user-role" className="input" aria-label="Perfil do usuário" value={role} onChange={(e) => setRole(e.target.value)}>
             {Object.entries(roleLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>

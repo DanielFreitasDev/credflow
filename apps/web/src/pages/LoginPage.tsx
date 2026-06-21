@@ -8,8 +8,8 @@ import { Logo } from '../components/Logo';
 export function LoginPage() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@credflow.dev');
-  const [password, setPassword] = useState('Admin@123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -39,8 +39,9 @@ export function LoginPage() {
 
         <form onSubmit={handleSubmit} className="card space-y-4 p-8">
           <div>
-            <label className="label">E-mail</label>
+            <label className="label" htmlFor="login-email">E-mail</label>
             <input
+              id="login-email"
               type="email"
               className="input"
               value={email}
@@ -50,8 +51,9 @@ export function LoginPage() {
             />
           </div>
           <div>
-            <label className="label">Senha</label>
+            <label className="label" htmlFor="login-password">Senha</label>
             <input
+              id="login-password"
               type="password"
               className="input"
               value={password}
@@ -72,9 +74,11 @@ export function LoginPage() {
             Entrar
           </button>
 
-          <p className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-            Demo: <strong>admin@credflow.dev</strong> / <strong>Admin@123456</strong>
-          </p>
+          {import.meta.env.DEV && (
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+              Demo: <strong>admin@credflow.dev</strong> / <strong>Admin@123456</strong>
+            </p>
+          )}
         </form>
       </div>
     </div>

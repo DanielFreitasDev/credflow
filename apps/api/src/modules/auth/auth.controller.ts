@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
@@ -15,7 +16,10 @@ function meta(req: Request): RequestMeta {
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  // Tight per-route limits on the credential endpoints (the global limit is far
+  // too permissive for brute-force / credential-stuffing on a financial app).
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Authenticate and receive access + refresh tokens' })
@@ -24,6 +28,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(200)
   @ApiOperation({ summary: 'Rotate tokens using a valid refresh token' })

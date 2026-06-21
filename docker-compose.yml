@@ -16,6 +16,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    mem_limit: 512m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api:
     build:
@@ -30,6 +37,25 @@ services:
         condition: service_healthy
     ports:
       - "${API_PORT:-3333}:3333"
+    # Liveness probe so the web service can wait until the API is actually ready
+    # (after migrate/backfill/seed), not merely started.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://localhost:3333/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    mem_limit: 768m
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   web:
     build:
@@ -38,9 +64,17 @@ services:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3333}
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
-      - "5173:80"
+      - "${WEB_PORT:-5173}:80"
+    mem_limit: 128m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:

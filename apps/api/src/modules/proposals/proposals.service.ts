@@ -6,9 +6,9 @@ import {
 import { AmortizationType, Prisma, ProposalStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
+import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common/utils/pagination.util';
 import { buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
-import { computeCet, simulate } from '../../domain/finance/finance';
+import { clampCet, computeCet, isNonAmortizing, simulate } from '../../domain/finance/finance';
 import { estimateIofCents } from '../../domain/finance/fees';
 import { centsToDecimal, centsToReais, reaisToCents } from '../../domain/finance/money';
 import { EncryptionService } from '../../common/crypto/encryption.service';
@@ -54,6 +54,12 @@ export class ProposalsService {
       amortization: dto.amortizationType as AmortizationType,
     });
 
+    if (dto.amortizationType === 'PRICE' && isNonAmortizing(sim.schedule)) {
+      throw new BadRequestException(
+        'A taxa é alta demais para o prazo: as parcelas não amortizam o principal. Reduza a taxa ou aumente o prazo.',
+      );
+    }
+
     const cet = computeCet(requestedCents, sim.schedule.map((s) => s.amount));
 
     return {
@@ -64,8 +70,10 @@ export class ProposalsService {
       installmentCents: sim.firstInstallmentCents,
       totalAmountCents: sim.totalAmountCents,
       totalInterestCents: sim.totalInterestCents,
-      cetMonthly: cet.monthly,
-      cetAnnual: cet.annual,
+      // Clamp to the persisted Decimal(12,6) CET domain so a high-rate product
+      // can never overflow the column (Postgres 22003) on create.
+      cetMonthly: clampCet(cet.monthly),
+      cetAnnual: clampCet(cet.annual),
       schedule: sim.schedule,
     };
   }
@@ -169,7 +177,7 @@ export class ProposalsService {
         where,
         skip,
         take,
-        orderBy: { [query.sortBy ?? 'createdAt']: query.sortOrder },
+        orderBy: resolveOrderBy(query.sortBy, ['createdAt', 'number', 'requestedAmount', 'status'], query.sortOrder),
         include: {
           customer: { select: { id: true, name: true, document: true, type: true } },
           analysis: { select: { decision: true, riskBand: true, score: true } },

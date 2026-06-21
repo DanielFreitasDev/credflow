@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString, Matches, MinLength } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({ example: 'admin@credflow.dev' })
@@ -24,8 +24,11 @@ export class ChangePasswordDto {
   @MinLength(6)
   currentPassword!: string;
 
-  @ApiProperty({ minLength: 8 })
+  @ApiProperty({ minLength: 12, description: 'At least 12 chars, with letters and numbers' })
   @IsString()
-  @MinLength(8)
+  @MinLength(12)
+  @Matches(/(?=.*[A-Za-z])(?=.*\d)/, {
+    message: 'newPassword must contain both letters and numbers',
+  })
   newPassword!: string;
 }

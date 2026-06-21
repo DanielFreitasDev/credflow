@@ -1,9 +1,12 @@
 import {
+  CET_MAX,
+  clampCet,
   computeCet,
   computeContractCosting,
   computeLateCharges,
   computeMonthlyIrr,
   computeOutstanding,
+  isNonAmortizing,
   pricePaymentCents,
   simulate,
 } from './finance';
@@ -284,5 +287,86 @@ describe('credit policy', () => {
       termMonths: 36,
     });
     expect(r.decision).toBe('MANUAL_REVIEW');
+  });
+});
+
+describe('finance: SIMPLE schedule never goes negative (regression)', () => {
+  it('keeps principal/interest/amount >= 0 even for tiny or rounding-unlucky loans', () => {
+    for (const P of [1, 2, 3, 5, 7, 53, 99, 100, 4399, 500_000]) {
+      for (const n of [2, 3, 4, 5, 12, 24]) {
+        for (const i of [0, 0.01, 0.02, 0.035]) {
+          const sc = simulate({ principalCents: P, monthlyRate: i, termMonths: n, amortization: 'SIMPLE' }).schedule;
+          for (const e of sc) {
+            expect(e.principal).toBeGreaterThanOrEqual(0);
+            expect(e.interest).toBeGreaterThanOrEqual(0);
+            expect(e.amount).toBeGreaterThanOrEqual(0);
+          }
+          expect(sum(sc.map((s) => s.principal))).toBe(P);
+          expect(sc[sc.length - 1].balance).toBe(0);
+        }
+      }
+    }
+  });
+});
+
+describe('finance: IRR/CET robustness (regression)', () => {
+  it('returns a real high effective rate instead of silently clamping at the old bound', () => {
+    // 100%/month loan: monthly IRR ~1.0, annual ~4095 — a real number, not ~5.
+    const { schedule } = simulate({ principalCents: 100000, monthlyRate: 1.0, termMonths: 12, amortization: 'PRICE' });
+    const { monthly, annual } = computeCet(100000, schedule.map((s) => s.amount));
+    expect(monthly).toBeCloseTo(1.0, 2);
+    expect(annual).toBeGreaterThan(4000);
+  });
+
+  it('clampCet keeps CET inside the persisted Decimal(12,6) domain and rejects junk', () => {
+    expect(clampCet(4095)).toBe(4095); // realistic high CET fits, not clamped
+    expect(clampCet(10 ** 9)).toBe(CET_MAX);
+    expect(clampCet(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(clampCet(NaN)).toBe(0);
+    expect(clampCet(-1)).toBe(0);
+  });
+
+  it('still converges to the nominal rate for a no-fee loan', () => {
+    const { schedule } = simulate({ principalCents: 1_000_000, monthlyRate: 0.03, termMonths: 24, amortization: 'PRICE' });
+    expect(computeMonthlyIrr(1_000_000, schedule.map((s) => s.amount))).toBeCloseTo(0.03, 4);
+  });
+});
+
+describe('finance: late-charge guards (regression)', () => {
+  it('caps arrears interest at 100% of the overdue base over long arrears', () => {
+    const r = computeLateCharges(100000, 100000 /* days */, 0.02, 0.01, { maxInterestCents: 100000 });
+    expect(r.interestCents).toBe(100000); // capped, not thousands of percent of the base
+  });
+
+  it('never produces negative charges for negative rates/inputs', () => {
+    const r = computeLateCharges(100000, 30, -0.5, -1);
+    expect(r.fineCents).toBe(0);
+    expect(r.interestCents).toBe(0);
+    expect(r.totalCents).toBe(100000);
+  });
+
+  it('computeOutstanding caps mora at the overdue base by default', () => {
+    const o = computeOutstanding({
+      amountDueCents: 100000,
+      amountPaidCents: 0,
+      lateFeePaidCents: 0,
+      lateInterestPaidCents: 0,
+      daysLate: 100000,
+      fineRate: 0.02,
+      monthlyInterestRate: 0.01,
+    });
+    expect(o.interestOutstandingCents).toBeLessThanOrEqual(100000);
+  });
+});
+
+describe('finance: non-amortizing (balloon) detection', () => {
+  it('flags a PRICE schedule whose payment never amortizes principal', () => {
+    const { schedule } = simulate({ principalCents: 100000, monthlyRate: 2.0, termMonths: 12, amortization: 'PRICE' });
+    expect(isNonAmortizing(schedule)).toBe(true);
+  });
+
+  it('does not flag a normal amortizing schedule', () => {
+    const { schedule } = simulate({ principalCents: 1_000_000, monthlyRate: 0.02, termMonths: 12, amortization: 'PRICE' });
+    expect(isNonAmortizing(schedule)).toBe(false);
   });
 });

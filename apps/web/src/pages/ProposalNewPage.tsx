@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
 import { ArrowLeft, Search } from 'lucide-react';
 import { api, apiError } from '../lib/api';
 import { useDebounce } from '../lib/hooks';
@@ -8,6 +9,14 @@ import { useToast } from '../lib/toast';
 import { Customer, Paginated, SimulationResult } from '../lib/types';
 import { amortizationLabel, currency, formatDocument, percentFromFraction } from '../lib/format';
 import { ErrorState, PageHeader, Spinner } from '../components/ui';
+
+// Loan parameters are validated client-side for parity with the API DTOs.
+// interestRate is the monthly fraction (0.025 = 2.5%); the form edits it as a percent.
+const paramsSchema = z.object({
+  requestedAmount: z.number({ invalid_type_error: 'Informe um valor' }).min(1, 'Valor mínimo de R$ 1').max(100_000_000, 'Valor acima do permitido'),
+  termMonths: z.number({ invalid_type_error: 'Informe o prazo' }).int('Prazo deve ser inteiro').min(1, 'Mínimo de 1 mês').max(420, 'Máximo de 420 meses'),
+  interestRate: z.number({ invalid_type_error: 'Informe a taxa' }).min(0, 'Taxa não pode ser negativa').max(2, 'Taxa acima do permitido (máx. 200%)'),
+});
 
 export function ProposalNewPage() {
   const navigate = useNavigate();
@@ -55,15 +64,33 @@ export function ProposalNewPage() {
   );
   const debouncedSim = useDebounce(simInput, 400);
 
+  const validation = paramsSchema.safeParse({
+    requestedAmount,
+    termMonths,
+    interestRate: ratePercent / 100,
+  });
+  const paramErrors: Partial<Record<'requestedAmount' | 'termMonths' | 'interestRate', string>> = {};
+  if (!validation.success) {
+    for (const issue of validation.error.issues) {
+      const key = issue.path[0] as keyof typeof paramErrors;
+      if (key && !paramErrors[key]) paramErrors[key] = issue.message;
+    }
+  }
+  const paramsValid = validation.success;
+
   const { data: sim, error: simError, isFetching } = useQuery({
     queryKey: ['simulate', debouncedSim],
     queryFn: async () => (await api.post<SimulationResult>('/proposals/simulate', debouncedSim)).data,
-    enabled: requestedAmount > 0 && termMonths > 0,
+    enabled: paramsValid,
   });
 
   const handleCreate = async () => {
     if (!customerId) {
       toast.error('Selecione um cliente');
+      return;
+    }
+    if (!paramsValid) {
+      toast.error('Revise os parâmetros do empréstimo');
       return;
     }
     setCreating(true);
@@ -91,7 +118,7 @@ export function ProposalNewPage() {
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">Parâmetros</h3>
 
           <div className="relative">
-            <label className="label">Cliente</label>
+            <label className="label" htmlFor="customer-search">Cliente</label>
             {selected && customerId ? (
               <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
                 <div>
@@ -107,7 +134,9 @@ export function ProposalNewPage() {
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                   <input
+                    id="customer-search"
                     className="input pl-9"
+                    aria-label="Buscar cliente"
                     placeholder="Buscar cliente por nome/documento..."
                     value={customerSearch}
                     onFocusCapture={() => setShowList(true)}
@@ -133,8 +162,8 @@ export function ProposalNewPage() {
           </div>
 
           <div>
-            <label className="label">Sistema de amortização</label>
-            <select className="input" value={amortizationType} onChange={(e) => setAmortizationType(e.target.value as 'PRICE')}>
+            <label className="label" htmlFor="amortizationType">Sistema de amortização</label>
+            <select id="amortizationType" className="input" aria-label="Sistema de amortização" value={amortizationType} onChange={(e) => setAmortizationType(e.target.value as 'PRICE')}>
               {Object.entries(amortizationLabel).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
@@ -143,20 +172,23 @@ export function ProposalNewPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">Valor solicitado (R$)</label>
-              <input type="number" className="input" value={requestedAmount} onChange={(e) => setRequestedAmount(Number(e.target.value))} />
+              <label className="label" htmlFor="requestedAmount">Valor solicitado (R$)</label>
+              <input id="requestedAmount" type="number" className="input" value={requestedAmount} onChange={(e) => setRequestedAmount(Number(e.target.value))} />
+              {paramErrors.requestedAmount && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{paramErrors.requestedAmount}</p>}
             </div>
             <div>
-              <label className="label">Prazo (meses)</label>
-              <input type="number" className="input" value={termMonths} onChange={(e) => setTermMonths(Number(e.target.value))} />
+              <label className="label" htmlFor="termMonths">Prazo (meses)</label>
+              <input id="termMonths" type="number" className="input" value={termMonths} onChange={(e) => setTermMonths(Number(e.target.value))} />
+              {paramErrors.termMonths && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{paramErrors.termMonths}</p>}
             </div>
             <div>
-              <label className="label">Taxa de juros (% ao mês)</label>
-              <input type="number" step="0.01" className="input" value={ratePercent} onChange={(e) => setRatePercent(Number(e.target.value))} />
+              <label className="label" htmlFor="ratePercent">Taxa de juros (% ao mês)</label>
+              <input id="ratePercent" type="number" step="0.01" className="input" value={ratePercent} onChange={(e) => setRatePercent(Number(e.target.value))} />
+              {paramErrors.interestRate && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{paramErrors.interestRate}</p>}
             </div>
             <div>
-              <label className="label">TAC (R$)</label>
-              <input type="number" step="0.01" className="input" value={tacAmount} onChange={(e) => setTacAmount(Number(e.target.value))} />
+              <label className="label" htmlFor="tacAmount">TAC (R$)</label>
+              <input id="tacAmount" type="number" step="0.01" className="input" value={tacAmount} onChange={(e) => setTacAmount(Number(e.target.value))} />
             </div>
           </div>
 
@@ -166,11 +198,11 @@ export function ProposalNewPage() {
           </label>
 
           <div>
-            <label className="label">Finalidade</label>
-            <input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Ex.: capital de giro" />
+            <label className="label" htmlFor="purpose">Finalidade</label>
+            <input id="purpose" className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Ex.: capital de giro" />
           </div>
 
-          <button className="btn-primary w-full" onClick={handleCreate} disabled={creating || !customerId}>
+          <button className="btn-primary w-full" onClick={handleCreate} disabled={creating || !customerId || !paramsValid}>
             {creating && <Spinner className="h-4 w-4" />}
             Criar proposta
           </button>

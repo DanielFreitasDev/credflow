@@ -7,7 +7,7 @@ import { Prisma, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
-import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
+import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common/utils/pagination.util';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -66,7 +66,7 @@ export class UsersService {
         select: SELECT_SAFE,
         skip,
         take,
-        orderBy: { [query.sortBy ?? 'createdAt']: query.sortOrder },
+        orderBy: resolveOrderBy(query.sortBy, ['createdAt', 'name', 'email', 'role'], query.sortOrder),
       }),
       this.prisma.user.count({ where }),
     ]);

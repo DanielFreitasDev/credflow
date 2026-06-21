@@ -3,8 +3,9 @@ import { ContractStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { EncryptionService } from '../../common/crypto/encryption.service';
-import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
+import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common/utils/pagination.util';
 import { isValidDocument, onlyDigits } from '../../common/utils/document.util';
+import { centsToReais, reaisToCents } from '../../domain/finance/money';
 import {
   CreateCustomerDto,
   CustomerQueryDto,
@@ -123,7 +124,7 @@ export class CustomersService {
         where,
         skip,
         take,
-        orderBy: { [query.sortBy ?? 'createdAt']: query.sortOrder },
+        orderBy: resolveOrderBy(query.sortBy, ['createdAt', 'name', 'internalScore', 'status'], query.sortOrder),
         include: { address: true, _count: { select: { proposals: true, contracts: true } } },
       }),
       this.prisma.customer.count({ where }),
@@ -157,18 +158,19 @@ export class CustomersService {
       },
     });
 
-    let totalBorrowed = 0;
-    let totalPaid = 0;
-    let outstanding = 0;
-    let overdue = 0;
+    // Aggregate in integer cents (the central invariant) then convert once.
+    let totalBorrowedCents = 0;
+    let totalPaidCents = 0;
+    let outstandingCents = 0;
+    let overdueCents = 0;
     for (const c of contracts) {
-      totalBorrowed += Number(c.principal);
+      totalBorrowedCents += reaisToCents(c.principal);
       for (const i of c.installments) {
-        const due = Number(i.amountDue);
-        const paid = Number(i.amountPaid);
-        totalPaid += paid;
-        if (i.status !== 'PAID' && i.status !== 'CANCELLED') outstanding += due - paid;
-        if (i.status === 'OVERDUE') overdue += due - paid;
+        const due = reaisToCents(i.amountDue);
+        const paid = reaisToCents(i.amountPaid);
+        totalPaidCents += paid;
+        if (i.status !== 'PAID' && i.status !== 'CANCELLED') outstandingCents += due - paid;
+        if (i.status === 'OVERDUE') overdueCents += due - paid;
       }
     }
 
@@ -179,10 +181,10 @@ export class CustomersService {
       totalContracts: contracts.length,
       activeContracts,
       defaultedContracts,
-      totalBorrowed: round2(totalBorrowed),
-      totalPaid: round2(totalPaid),
-      outstanding: round2(outstanding),
-      overdue: round2(overdue),
+      totalBorrowed: centsToReais(totalBorrowedCents),
+      totalPaid: centsToReais(totalPaidCents),
+      outstanding: centsToReais(outstandingCents),
+      overdue: centsToReais(overdueCents),
     };
   }
 
@@ -224,6 +226,20 @@ export class CustomersService {
                 create: { ...dto.address, country: dto.address.country ?? 'BR' },
                 update: { ...dto.address },
               },
+            }
+          : undefined,
+        // Replace the contact/document sets when provided (omitting them leaves
+        // the existing rows untouched). Previously these were silently ignored
+        // on update even though the DTO accepted them.
+        contacts: dto.contacts ? { deleteMany: {}, create: dto.contacts } : undefined,
+        documents: dto.documents
+          ? {
+              deleteMany: {},
+              create: dto.documents.map((d) => ({
+                ...d,
+                number: d.number ? this.encryption.encrypt(d.number) : null,
+                issueDate: d.issueDate ? new Date(d.issueDate) : null,
+              })),
             }
           : undefined,
       },
@@ -274,8 +290,4 @@ export class CustomersService {
     if (!customer) throw new NotFoundException('Customer not found');
     return customer;
   }
-}
-
-function round2(v: number): number {
-  return Math.round(v * 100) / 100;
 }
