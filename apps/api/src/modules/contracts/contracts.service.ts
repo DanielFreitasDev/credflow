@@ -8,7 +8,7 @@ import { ContractStatus, Prisma, ProposalStatus } from '../../generated/prisma/c
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common/utils/pagination.util';
-import { acquireNumberLock, buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
+import { acquireNumberLock, buildSequentialNumber, nextSeqFromMax, retryOnUniqueViolation } from '../../common/utils/sequence.util';
 import { addMonths, daysBetween, startOfDay } from '../../common/utils/date.util';
 import {
   clampCet,
@@ -92,10 +92,11 @@ export class ContractsService {
     const contract = await retryOnUniqueViolation(() =>
       this.prisma.$transaction(async (tx) => {
         await acquireNumberLock(tx, 'CTR', year);
-        const count = await tx.contract.count({
+        const last = await tx.contract.aggregate({
+          _max: { number: true },
           where: { number: { startsWith: `CTR-${year}-` } },
         });
-        const number = buildSequentialNumber('CTR', year, count + 1);
+        const number = buildSequentialNumber('CTR', year, nextSeqFromMax(last._max.number));
 
         const created = await tx.contract.create({
           data: {
@@ -308,25 +309,31 @@ export class ContractsService {
         where: { id: contractId },
         data: { status: 'SETTLED', settledAt: new Date() },
       });
-      await this.audit.record({
-        action: 'CONTRACT_SETTLED',
-        entity: 'Contract',
-        entityId: contractId,
-        before: { status: contract.status },
-        after: { status: 'SETTLED' },
-      });
+      await this.audit.record(
+        {
+          action: 'CONTRACT_SETTLED',
+          entity: 'Contract',
+          entityId: contractId,
+          before: { status: contract.status },
+          after: { status: 'SETTLED' },
+        },
+        txClient,
+      );
     } else if (!allDone && contract.status === 'SETTLED') {
       await db.contract.update({
         where: { id: contractId },
         data: { status: 'ACTIVE', settledAt: null },
       });
-      await this.audit.record({
-        action: 'CONTRACT_REACTIVATED',
-        entity: 'Contract',
-        entityId: contractId,
-        before: { status: 'SETTLED' },
-        after: { status: 'ACTIVE' },
-      });
+      await this.audit.record(
+        {
+          action: 'CONTRACT_REACTIVATED',
+          entity: 'Contract',
+          entityId: contractId,
+          before: { status: 'SETTLED' },
+          after: { status: 'ACTIVE' },
+        },
+        txClient,
+      );
     }
   }
 

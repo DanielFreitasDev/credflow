@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class DecideDto {
   @ApiProperty({ enum: ['APPROVED', 'REJECTED'] })
@@ -10,6 +10,7 @@ export class DecideDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(1_000_000_000)
   approvedAmount?: number;
 
   @ApiProperty({ description: 'Justification recorded in the audit trail' })

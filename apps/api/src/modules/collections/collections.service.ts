@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   CollectionStatus,
   ContractStatus,
@@ -9,7 +9,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';
-import { acquireNumberLock, buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
+import { acquireNumberLock, buildSequentialNumber, nextSeqFromMax, retryOnUniqueViolation } from '../../common/utils/sequence.util';
 import { addMonths, daysBetween, startOfDay } from '../../common/utils/date.util';
 import { clampCet, computeCet, computeOutstanding, simulate } from '../../domain/finance/finance';
 import { centsToDecimal, centsToReais, reaisToCents } from '../../domain/finance/money';
@@ -61,6 +61,16 @@ function dunningStageFor(daysOverdue: number): DunningStage | null {
 
 @Injectable()
 export class CollectionsService {
+  private readonly logger = new Logger(CollectionsService.name);
+  // In-process re-entrancy guard shared by BOTH the cron and the manual
+  // POST /collections/run, so a manual trigger can't overlap the scheduled run
+  // (or vice-versa) on the same instance. Across multiple replicas a distributed
+  // lock is still needed at the infra layer — a session-level Postgres advisory
+  // lock is unreliable here because the pg driver pool doesn't pin one connection
+  // across the job's many transactions; a dedicated lock row/leader-election is
+  // the correct mechanism (tracked as ops follow-up).
+  private running = false;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -141,21 +151,27 @@ export class CollectionsService {
 
       if (contract.status !== ContractStatus.DEFAULTED) {
         await tx.contract.update({ where: { id: contractId }, data: { status: 'DEFAULTED' } });
-        await this.audit.record({
-          action: 'CONTRACT_DEFAULTED',
-          entity: 'Contract',
-          entityId: contractId,
-          before: { status: contract.status },
-          after: { status: 'DEFAULTED', daysOverdue: maxDays },
-        });
+        await this.audit.record(
+          {
+            action: 'CONTRACT_DEFAULTED',
+            entity: 'Contract',
+            entityId: contractId,
+            before: { status: contract.status },
+            after: { status: 'DEFAULTED', daysOverdue: maxDays },
+          },
+          tx,
+        );
       }
       if (!existing) {
-        await this.audit.record({
-          action: 'COLLECTION_OPENED',
-          entity: 'CollectionCase',
-          entityId: cse.id,
-          after: { contractId, daysOverdue: maxDays },
-        });
+        await this.audit.record(
+          {
+            action: 'COLLECTION_OPENED',
+            entity: 'CollectionCase',
+            entityId: cse.id,
+            after: { contractId, daysOverdue: maxDays },
+          },
+          tx,
+        );
       }
       return cse;
     }
@@ -165,25 +181,34 @@ export class CollectionsService {
     if (existing && existing.status !== 'RESOLVED' && existing.status !== 'WRITTEN_OFF') {
       await tx.collectionCase.update({
         where: { contractId },
-        data: { status: 'RESOLVED', resolvedAt: new Date(), daysOverdue: 0, totalOverdue: 0 },
+        // Reset dunningStage so that if this contract ever falls overdue again the
+        // dunning ladder restarts from stage 1 (friendly reminder) instead of
+        // resuming at the last-reached stage and skipping early, gentler steps.
+        data: { status: 'RESOLVED', resolvedAt: new Date(), daysOverdue: 0, totalOverdue: 0, dunningStage: 0 },
       });
-      await this.audit.record({
-        action: 'COLLECTION_RESOLVED',
-        entity: 'CollectionCase',
-        entityId: existing.id,
-        before: { status: existing.status },
-        after: { status: 'RESOLVED' },
-      });
+      await this.audit.record(
+        {
+          action: 'COLLECTION_RESOLVED',
+          entity: 'CollectionCase',
+          entityId: existing.id,
+          before: { status: existing.status },
+          after: { status: 'RESOLVED' },
+        },
+        tx,
+      );
     }
     if (contract.status === ContractStatus.DEFAULTED) {
       await tx.contract.update({ where: { id: contractId }, data: { status: 'ACTIVE' } });
-      await this.audit.record({
-        action: 'CONTRACT_REACTIVATED',
-        entity: 'Contract',
-        entityId: contractId,
-        before: { status: 'DEFAULTED' },
-        after: { status: 'ACTIVE' },
-      });
+      await this.audit.record(
+        {
+          action: 'CONTRACT_REACTIVATED',
+          entity: 'Contract',
+          entityId: contractId,
+          before: { status: 'DEFAULTED' },
+          after: { status: 'ACTIVE' },
+        },
+        tx,
+      );
     }
     return null;
   }
@@ -195,11 +220,20 @@ export class CollectionsService {
       select: { id: true },
     });
     let openCases = 0;
+    let failed = 0;
     for (const c of contracts) {
-      const r = await this.refreshContract(c.id);
-      if (r) openCases++;
+      // Isolate each contract: one contract's refresh throwing (e.g. a transient
+      // serialization error) must not abort the whole batch and leave the rest
+      // of the portfolio un-refreshed.
+      try {
+        const r = await this.refreshContract(c.id);
+        if (r) openCases++;
+      } catch (err) {
+        failed++;
+        this.logger.error(`refreshContract failed for contract ${c.id}`, err as Error);
+      }
     }
-    return { scanned: contracts.length, openCases };
+    return { scanned: contracts.length, openCases, ...(failed ? { failed } : {}) };
   }
 
   /**
@@ -208,10 +242,19 @@ export class CollectionsService {
    * demand (POST /collections/run). CollectionsScheduler's cron calls this.
    */
   async runDailyCollections() {
-    const arrears = await this.refreshAll();
-    const dunning = await this.applyDunningLadder();
-    const promises = await this.reconcilePromises();
-    return { ...arrears, ...dunning, ...promises };
+    if (this.running) {
+      this.logger.warn('Collections run skipped: another run is already in progress.');
+      return { skipped: true, reason: 'A collections run is already in progress' };
+    }
+    this.running = true;
+    try {
+      const arrears = await this.refreshAll();
+      const dunning = await this.applyDunningLadder();
+      const promises = await this.reconcilePromises();
+      return { ...arrears, ...dunning, ...promises };
+    } finally {
+      this.running = false;
+    }
   }
 
   /**
@@ -388,7 +431,12 @@ export class CollectionsService {
     }
     const updated = await this.prisma.collectionCase.update({
       where: { id: caseId },
-      data: { status, resolvedAt: status === 'RESOLVED' || status === 'WRITTEN_OFF' ? new Date() : null },
+      data: {
+        status,
+        resolvedAt: status === 'RESOLVED' || status === 'WRITTEN_OFF' ? new Date() : null,
+        // Restart the dunning ladder on resolution (see refreshContractTx).
+        ...(status === 'RESOLVED' ? { dunningStage: 0 } : {}),
+      },
     });
     await this.audit.record({ userId: actorId, action: 'COLLECTION_STATUS', entity: 'CollectionCase', entityId: caseId, before: { status: cse.status }, after: { status } });
     return updated;
@@ -466,8 +514,11 @@ export class CollectionsService {
         const endDate = addMonths(firstDueDate, dto.termMonths - 1);
 
         await acquireNumberLock(tx, 'CTR', year);
-        const count = await tx.contract.count({ where: { number: { startsWith: `CTR-${year}-` } } });
-        const number = buildSequentialNumber('CTR', year, count + 1);
+        const last = await tx.contract.aggregate({
+          _max: { number: true },
+          where: { number: { startsWith: `CTR-${year}-` } },
+        });
+        const number = buildSequentialNumber('CTR', year, nextSeqFromMax(last._max.number));
         const newContract = await tx.contract.create({
           data: {
             number,
@@ -504,7 +555,7 @@ export class CollectionsService {
         await tx.contract.update({ where: { id: contractId }, data: { status: 'RENEGOTIATED' } });
         await tx.collectionCase.updateMany({
           where: { contractId, status: { notIn: ['RESOLVED', 'WRITTEN_OFF'] } },
-          data: { status: 'RESOLVED', resolvedAt: new Date() },
+          data: { status: 'RESOLVED', resolvedAt: new Date(), dunningStage: 0 },
         });
 
         return { created: newContract, capitalizedChargesCents: capitalized };

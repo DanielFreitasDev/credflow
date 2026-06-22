@@ -96,18 +96,21 @@ export class UsersService {
 
   async update(id: string, dto: UpdateUserDto): Promise<SafeUser> {
     await this.findOne(id);
-    await this.assertNotRemovingLastAdmin(id, { role: dto.role, active: dto.active });
-    const data: Prisma.UserUpdateInput = {
-      name: dto.name,
-      email: dto.email,
-      role: dto.role,
-      active: dto.active,
-    };
-    if (dto.password) {
-      data.passwordHash = await UsersService.hashPassword(dto.password);
-    }
-    const updated = await this.prisma.user.update({ where: { id }, data, select: SELECT_SAFE });
-    if (dto.password) {
+    // Hash OUTSIDE the transaction — argon2 holds 64 MiB for ~100ms and must not
+    // pin a DB connection or stretch the admin-lock window below.
+    const passwordHash = dto.password ? await UsersService.hashPassword(dto.password) : undefined;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.assertNotRemovingLastAdmin(tx, id, { role: dto.role, active: dto.active });
+      const data: Prisma.UserUpdateInput = {
+        name: dto.name,
+        email: dto.email,
+        role: dto.role,
+        active: dto.active,
+      };
+      if (passwordHash) data.passwordHash = passwordHash;
+      return tx.user.update({ where: { id }, data, select: SELECT_SAFE });
+    });
+    if (passwordHash) {
       // An admin-forced password reset must invalidate the target user's active
       // sessions, mirroring self-service change-password.
       await this.prisma.refreshToken.updateMany({
@@ -120,25 +123,31 @@ export class UsersService {
 
   async setActive(id: string, active: boolean): Promise<SafeUser> {
     await this.findOne(id);
-    if (!active) await this.assertNotRemovingLastAdmin(id, { active: false });
-    return this.prisma.user.update({ where: { id }, data: { active }, select: SELECT_SAFE });
+    return this.prisma.$transaction(async (tx) => {
+      if (!active) await this.assertNotRemovingLastAdmin(tx, id, { active: false });
+      return tx.user.update({ where: { id }, data: { active }, select: SELECT_SAFE });
+    });
   }
 
   /**
    * Prevents removing the last active administrator (by demotion or
    * deactivation), which would otherwise lock the platform out of user and role
-   * management entirely.
+   * management entirely. Must run inside a `$transaction`: it locks the active
+   * admin rows `FOR UPDATE` so two concurrent demotions of *different* admins
+   * can't both observe count == 2 and commit, leaving zero admins.
    */
   private async assertNotRemovingLastAdmin(
+    tx: Prisma.TransactionClient,
     id: string,
     next: { role?: Role; active?: boolean },
   ): Promise<void> {
-    const target = await this.prisma.user.findUnique({ where: { id } });
+    const target = await tx.user.findUnique({ where: { id } });
     if (!target || target.role !== Role.ADMIN || !target.active) return;
     const losingAdmin =
       (next.role !== undefined && next.role !== Role.ADMIN) || next.active === false;
     if (!losingAdmin) return;
-    const activeAdmins = await this.prisma.user.count({
+    await tx.$executeRaw`SELECT id FROM "User" WHERE role::text = 'ADMIN' AND active = true FOR UPDATE`;
+    const activeAdmins = await tx.user.count({
       where: { role: Role.ADMIN, active: true },
     });
     if (activeAdmins <= 1) {

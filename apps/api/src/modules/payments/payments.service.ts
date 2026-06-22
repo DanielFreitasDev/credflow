@@ -59,6 +59,11 @@ export class PaymentsService {
     };
     try {
       result = await this.prisma.$transaction(async (tx) => {
+      // Lock the CONTRACT row first so settlement + arrears recompute for one
+      // contract is serialised even across payments on *different* installments
+      // (each would otherwise take only its own installment lock and then race on
+      // the shared contract status / collection case). Mirrors renegotiate().
+      await tx.$queryRaw`SELECT c.id FROM "Contract" c JOIN "Installment" i ON i."contractId" = c.id WHERE i.id = ${dto.installmentId} FOR UPDATE OF c`;
       await tx.$queryRaw`SELECT id FROM "Installment" WHERE id = ${dto.installmentId} FOR UPDATE`;
       const installment = await tx.installment.findUnique({
         where: { id: dto.installmentId },

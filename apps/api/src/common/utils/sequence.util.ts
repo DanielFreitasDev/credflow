@@ -7,10 +7,10 @@ export function buildSequentialNumber(prefix: string, year: number, seq: number)
 
 /**
  * Serialises sequential-number allocation for a (prefix, year) with a Postgres
- * transaction-level advisory lock, so two concurrent creators can't read the
- * same COUNT(*) and generate a colliding number. The lock auto-releases at
- * transaction end; the unique index + retryOnUniqueViolation stay as the final
- * backstop. Must be called inside a `$transaction`.
+ * transaction-level advisory lock, so two concurrent creators can't derive the
+ * same next number and collide. The lock auto-releases at transaction end; the
+ * unique index + retryOnUniqueViolation stay as the final backstop. Must be
+ * called inside a `$transaction`.
  */
 export async function acquireNumberLock(
   tx: Prisma.TransactionClient,
@@ -19,6 +19,19 @@ export async function acquireNumberLock(
 ): Promise<void> {
   const key = `${prefix}-${year}`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+}
+
+/**
+ * Derives the next sequence value from the highest EXISTING number for a
+ * (prefix, year), e.g. 'PRO-2026-000042' -> 43; returns 1 when there is none.
+ * MAX (vs COUNT) is delete-safe — a hard-deleted row can't make the next number
+ * collide with one already issued — and reads through the unique `number` index
+ * instead of scanning the whole year's rows.
+ */
+export function nextSeqFromMax(maxNumber: string | null | undefined): number {
+  if (!maxNumber) return 1;
+  const seq = parseInt(maxNumber.slice(maxNumber.lastIndexOf('-') + 1), 10);
+  return Number.isFinite(seq) ? seq + 1 : 1;
 }
 
 /** Retries an operation that may hit a unique-constraint race (Prisma P2002). */

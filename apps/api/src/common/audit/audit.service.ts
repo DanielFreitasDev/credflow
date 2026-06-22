@@ -22,9 +22,16 @@ export class AuditService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async record(entry: AuditEntry): Promise<void> {
+  /**
+   * Writes an audit row. Pass `client` (a `$transaction` client) when recording
+   * from inside a business transaction so the audit entry commits — or rolls
+   * back — together with the change it describes, instead of via a separate
+   * connection that could persist a log for a transaction that never committed.
+   * Still best-effort: a write failure is logged, never thrown.
+   */
+  async record(entry: AuditEntry, client?: Prisma.TransactionClient): Promise<void> {
     try {
-      await this.prisma.auditLog.create({
+      await (client ?? this.prisma).auditLog.create({
         data: {
           userId: entry.userId ?? null,
           action: entry.action,

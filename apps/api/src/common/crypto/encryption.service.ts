@@ -1,6 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { blindIndexWithKey, decryptWithKey, deriveBlindIndexKey, encryptWithKey } from './pii.util';
+import {
+  blindIndexWithKey,
+  decryptWithKey,
+  deriveBlindIndexKey,
+  encryptWithKey,
+  looksLikeCiphertext,
+} from './pii.util';
 
 /**
  * Authenticated symmetric encryption (AES-256-GCM) for sensitive PII at rest.
@@ -9,14 +15,17 @@ import { blindIndexWithKey, decryptWithKey, deriveBlindIndexKey, encryptWithKey 
  */
 @Injectable()
 export class EncryptionService {
+  private readonly logger = new Logger(EncryptionService.name);
   private readonly key: Buffer;
   /** Dedicated, domain-separated key for the HMAC blind index (never the AES key). */
   private readonly blindKey: Buffer;
+  private readonly isProduction: boolean;
 
   constructor(config: ConfigService) {
     this.key = Buffer.from(config.getOrThrow<string>('encryptionKey'), 'base64');
     const explicit = config.get<string>('blindIndexKey');
     this.blindKey = explicit ? Buffer.from(explicit, 'base64') : deriveBlindIndexKey(this.key);
+    this.isProduction = (config.get<string>('nodeEnv') ?? process.env.NODE_ENV) === 'production';
   }
 
   encrypt(plaintext: string): string {
@@ -30,14 +39,24 @@ export class EncryptionService {
   }
 
   /**
-   * Decrypts a value, tolerating legacy plaintext (e.g. seed data or rows not yet
-   * backfilled): if the payload isn't valid ciphertext, the original is returned.
+   * Decrypts a value, tolerating legacy plaintext (seed data / rows not yet
+   * backfilled). On failure it distinguishes two cases: a value that does NOT
+   * look like our ciphertext envelope is treated as legacy plaintext and returned
+   * as-is; a value that DOES look like ciphertext but fails authentication is an
+   * integrity failure (tampering / wrong key) — in production we return `null`
+   * and never echo the stored bytes (defeating an attacker with DB-write access
+   * who swaps ciphertext for chosen plaintext). In non-production we stay lenient
+   * to keep local/seed workflows frictionless.
    */
   safeDecrypt(value: string | null | undefined): string | null {
     if (value == null) return null;
     try {
       return this.decrypt(value);
     } catch {
+      if (this.isProduction && looksLikeCiphertext(value)) {
+        this.logger.error('PII decryption failed for a ciphertext-shaped value (possible tampering or key mismatch)');
+        return null;
+      }
       return value;
     }
   }
@@ -64,7 +83,9 @@ export class EncryptionService {
   ): void {
     if (!obj) return;
     if (obj.document != null) {
-      const plain = this.safeDecrypt(obj.document) ?? obj.document;
+      // If safeDecrypt returns null (undecryptable ciphertext in production) we
+      // expose null — never the raw ciphertext — so the envelope can't leak.
+      const plain = this.safeDecrypt(obj.document);
       obj.document = role === 'AUDITOR' ? this.maskDocument(plain) : plain;
     }
     delete obj.documentHash;

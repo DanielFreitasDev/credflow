@@ -68,7 +68,8 @@ export class CustomersService {
     const customer = await this.prisma.customer.create({
       data: {
         type: dto.type,
-        status: dto.status ?? 'PROSPECT',
+        // Always PROSPECT on create; status changes go through updateStatus().
+        status: 'PROSPECT',
         name: dto.name,
         tradeName: dto.tradeName,
         document: this.encryption.encrypt(digits),
@@ -164,36 +165,39 @@ export class CustomersService {
   async getFinancialHistory(id: string) {
     await this.ensureExists(id);
 
-    const contracts = await this.prisma.contract.findMany({
-      where: { customerId: id },
-      include: {
-        installments: { select: { amountDue: true, amountPaid: true, status: true } },
-      },
-    });
+    // Aggregate in the database instead of loading the customer's entire contract
+    // + installment graph into memory (which grows unbounded with tenure). The
+    // money invariant is preserved: sums come back as Decimal(2dp), are converted
+    // to integer cents and subtracted there. Indexed by Contract.customerId /
+    // Installment.contractId.
+    const byCustomer = { contract: { customerId: id } };
+    const [contractAgg, byStatus, paidAgg, outstandingAgg, overdueAgg] = await this.prisma.$transaction([
+      this.prisma.contract.aggregate({ _sum: { principal: true }, _count: true, where: { customerId: id } }),
+      this.prisma.contract.groupBy({ by: ['status'], _count: true, where: { customerId: id } }),
+      this.prisma.installment.aggregate({ _sum: { amountPaid: true }, where: byCustomer }),
+      this.prisma.installment.aggregate({
+        _sum: { amountDue: true, amountPaid: true },
+        where: { ...byCustomer, status: { notIn: ['PAID', 'CANCELLED'] } },
+      }),
+      this.prisma.installment.aggregate({
+        _sum: { amountDue: true, amountPaid: true },
+        where: { ...byCustomer, status: 'OVERDUE' },
+      }),
+    ]);
 
-    // Aggregate in integer cents (the central invariant) then convert once.
-    let totalBorrowedCents = 0;
-    let totalPaidCents = 0;
-    let outstandingCents = 0;
-    let overdueCents = 0;
-    for (const c of contracts) {
-      totalBorrowedCents += reaisToCents(c.principal);
-      for (const i of c.installments) {
-        const due = reaisToCents(i.amountDue);
-        const paid = reaisToCents(i.amountPaid);
-        totalPaidCents += paid;
-        if (i.status !== 'PAID' && i.status !== 'CANCELLED') outstandingCents += due - paid;
-        if (i.status === 'OVERDUE') overdueCents += due - paid;
-      }
-    }
+    const totalBorrowedCents = reaisToCents(contractAgg._sum.principal ?? 0);
+    const totalPaidCents = reaisToCents(paidAgg._sum.amountPaid ?? 0);
+    const outstandingCents =
+      reaisToCents(outstandingAgg._sum.amountDue ?? 0) - reaisToCents(outstandingAgg._sum.amountPaid ?? 0);
+    const overdueCents =
+      reaisToCents(overdueAgg._sum.amountDue ?? 0) - reaisToCents(overdueAgg._sum.amountPaid ?? 0);
 
-    const activeContracts = contracts.filter((c) => c.status === ContractStatus.ACTIVE).length;
-    const defaultedContracts = contracts.filter((c) => c.status === ContractStatus.DEFAULTED).length;
+    const countFor = (s: ContractStatus) => byStatus.find((g) => g.status === s)?._count ?? 0;
 
     return {
-      totalContracts: contracts.length,
-      activeContracts,
-      defaultedContracts,
+      totalContracts: contractAgg._count,
+      activeContracts: countFor(ContractStatus.ACTIVE),
+      defaultedContracts: countFor(ContractStatus.DEFAULTED),
       totalBorrowed: centsToReais(totalBorrowedCents),
       totalPaid: centsToReais(totalPaidCents),
       outstanding: centsToReais(outstandingCents),
@@ -213,7 +217,7 @@ export class CustomersService {
       where: { id },
       data: {
         type: dto.type,
-        status: dto.status,
+        // status is not updatable here — see updateStatus() (guarded + audited).
         name: dto.name,
         tradeName: dto.tradeName,
         ...(documentDigits

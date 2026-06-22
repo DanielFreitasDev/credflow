@@ -7,7 +7,7 @@ import { AmortizationType, Prisma, ProposalStatus } from '../../generated/prisma
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common/utils/pagination.util';
-import { acquireNumberLock, buildSequentialNumber, retryOnUniqueViolation } from '../../common/utils/sequence.util';
+import { acquireNumberLock, buildSequentialNumber, nextSeqFromMax, retryOnUniqueViolation } from '../../common/utils/sequence.util';
 import { clampCet, computeCet, isNonAmortizing, MAX_TOTAL_INTEREST_MULTIPLE, simulate } from '../../domain/finance/finance';
 import { estimateIofCents } from '../../domain/finance/fees';
 import { centsToDecimal, centsToReais, reaisToCents } from '../../domain/finance/money';
@@ -130,10 +130,11 @@ export class ProposalsService {
     const proposal = await retryOnUniqueViolation(() =>
       this.prisma.$transaction(async (tx) => {
         await acquireNumberLock(tx, 'PRO', year);
-        const count = await tx.creditProposal.count({
+        const last = await tx.creditProposal.aggregate({
+          _max: { number: true },
           where: { number: { startsWith: `PRO-${year}-` } },
         });
-        const number = buildSequentialNumber('PRO', year, count + 1);
+        const number = buildSequentialNumber('PRO', year, nextSeqFromMax(last._max.number));
 
         return tx.creditProposal.create({
         data: {

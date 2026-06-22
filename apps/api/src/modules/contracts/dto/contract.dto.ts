@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ContractStatus } from '../../../generated/prisma/client';
-import { IsEnum, IsISO8601, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsISO8601, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
 
 export class CreateContractDto {
@@ -29,6 +29,13 @@ export class CreateContractDto {
   lateInterestRate?: number;
 }
 
+export class ChargesPreviewDto {
+  @ApiPropertyOptional({ description: 'Reference date (ISO) for the preview; defaults to now' })
+  @IsOptional()
+  @IsISO8601()
+  date?: string;
+}
+
 export class ContractQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: ContractStatus })
   @IsOptional()
@@ -38,5 +45,6 @@ export class ContractQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(36)
   customerId?: string;
 }

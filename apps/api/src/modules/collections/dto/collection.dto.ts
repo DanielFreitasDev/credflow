@@ -35,6 +35,7 @@ export class CreatePromiseDto {
   @ApiProperty()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
+  @Max(1_000_000_000)
   amount!: number;
 
   @ApiProperty()

@@ -36,12 +36,17 @@ export class AuthController {
     return this.auth.refresh(dto.refreshToken, meta(req));
   }
 
+  // Public + authenticated by the refresh token itself, so logout still revokes
+  // the session server-side even when the access token has already expired (the
+  // previous Bearer-guarded version silently no-op'd in that case, leaving the
+  // refresh-token family alive). Scoped to the presented token — no cross-user impact.
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('logout')
   @HttpCode(204)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Revoke a refresh token (logout)' })
-  async logout(@CurrentUser('id') userId: string, @Body() dto: RefreshDto): Promise<void> {
-    await this.auth.logout(userId, dto.refreshToken);
+  @ApiOperation({ summary: 'Revoke a refresh token (logout) — works with an expired access token' })
+  async logout(@Body() dto: RefreshDto): Promise<void> {
+    await this.auth.logout(dto.refreshToken);
   }
 
   @Get('me')

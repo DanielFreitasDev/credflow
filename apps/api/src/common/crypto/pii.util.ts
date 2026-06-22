@@ -58,6 +58,22 @@ export function safeDecryptWithKey(key: Buffer, value: string | null | undefined
   }
 }
 
+/**
+ * Heuristic: does `value` have our `base64( iv[12] | tag[16] | ct )` envelope
+ * shape (valid base64 decoding to >= 28 bytes)? A legacy plaintext document
+ * (CPF/CNPJ digits, or formatted with dots/dashes) decodes to far fewer bytes —
+ * or isn't valid base64 — so it is never mistaken for ciphertext. Used to tell
+ * "tampered/undecryptable ciphertext" apart from "legacy plaintext".
+ */
+export function looksLikeCiphertext(value: string): boolean {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
+  try {
+    return Buffer.from(value, 'base64').length >= 28;
+  } catch {
+    return false;
+  }
+}
+
 /** Last 4 digits, for masked display / audit trails. */
 export function last4(value: string): string {
   return value.slice(-4);

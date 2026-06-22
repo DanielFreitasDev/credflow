@@ -21,6 +21,7 @@ export class SimulateProposalDto {
   @ApiProperty({ example: 10000, description: 'Requested amount (cash to the customer)' })
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(1)
+  @Max(1_000_000_000)
   requestedAmount!: number;
 
   @ApiProperty({ example: 12 })
@@ -39,12 +40,14 @@ export class SimulateProposalDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(1_000_000_000)
   iofAmount?: number;
 
   @ApiPropertyOptional({ description: 'Opening fee (TAC)', default: 0 })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(1_000_000_000)
   tacAmount?: number;
 
   @ApiPropertyOptional({ default: true })
@@ -56,6 +59,7 @@ export class SimulateProposalDto {
 export class CreateProposalDto extends SimulateProposalDto {
   @ApiProperty()
   @IsString()
+  @MaxLength(36)
   customerId!: string;
 
   @ApiPropertyOptional()
@@ -74,6 +78,7 @@ export class ProposalQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(36)
   customerId?: string;
 }
 

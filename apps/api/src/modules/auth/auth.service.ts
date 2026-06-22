@@ -210,12 +210,15 @@ export class AuthService {
     return this.issueTokens(user, meta);
   }
 
-  async logout(userId: string, refreshToken: string): Promise<void> {
+  async logout(refreshToken: string): Promise<void> {
+    if (!refreshToken) return;
+    // Revoke by the token's own (unique) hash, which the caller demonstrably
+    // possesses. No userId is needed, so logout works even with an expired access
+    // token; and because the hash identifies exactly one token, a user can only
+    // ever revoke a token they hold — never someone else's.
     const tokenHash = this.hashToken(refreshToken);
-    // Scope the revocation to the caller's own token so a user cannot revoke a
-    // token they do not own.
     await this.prisma.refreshToken.updateMany({
-      where: { tokenHash, userId, revokedAt: null },
+      where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
   }

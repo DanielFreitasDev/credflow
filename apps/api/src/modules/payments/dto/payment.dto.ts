@@ -1,16 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod } from '../../../generated/prisma/client';
-import { IsEnum, IsISO8601, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsISO8601, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
 
 export class CreatePaymentDto {
   @ApiProperty()
   @IsString()
+  @MaxLength(36)
   installmentId!: string;
 
   @ApiProperty({ example: 888.49 })
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
+  @Max(1_000_000_000)
   amount!: number;
 
   @ApiPropertyOptional({ enum: PaymentMethod, default: PaymentMethod.PIX })
@@ -61,5 +63,6 @@ export class PaymentQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(36)
   contractId?: string;
 }

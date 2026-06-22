@@ -11,7 +11,7 @@ import { Role } from '../../generated/prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ContractsService } from './contracts.service';
-import { ContractQueryDto, CreateContractDto } from './dto/contract.dto';
+import { ChargesPreviewDto, ContractQueryDto, CreateContractDto } from './dto/contract.dto';
 
 @ApiTags('contracts')
 @ApiBearerAuth()
@@ -47,8 +47,8 @@ export class ContractsController {
 
   @Get('installments/:installmentId/charges')
   @ApiOperation({ summary: 'Preview current late charges for an installment' })
-  charges(@Param('installmentId') installmentId: string, @Query('date') date?: string) {
-    return this.contracts.previewCharges(installmentId, date);
+  charges(@Param('installmentId') installmentId: string, @Query() query: ChargesPreviewDto) {
+    return this.contracts.previewCharges(installmentId, query.date);
   }
 
   @Post(':id/cancel')

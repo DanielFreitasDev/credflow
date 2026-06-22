@@ -50,6 +50,13 @@ export class DashboardService {
       }),
       this.prisma.installment.findMany({
         where: { status: 'OVERDUE' },
+        // Memory-safety ceiling: late charges need per-row daysLate math that an
+        // aggregate can't express, but loading an unbounded overdue set would pin
+        // the request. 50k overdue installments is far beyond any healthy book; at
+        // that scale a materialized snapshot (refreshed by the daily cron) is the
+        // proper answer. Ordered so the worst arrears are always included.
+        orderBy: { dueDate: 'asc' },
+        take: 50000,
         select: {
           amountDue: true,
           amountPaid: true,
@@ -72,6 +79,8 @@ export class DashboardService {
           dueDate: { gte: today, lte: horizon },
           contract: { status: { in: ['ACTIVE', 'DEFAULTED'] } },
         },
+        // Window-bounded (6 months) but capped as a memory ceiling all the same.
+        take: 50000,
         select: { dueDate: true, amountDue: true, amountPaid: true },
       }),
     ]);
