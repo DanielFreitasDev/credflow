@@ -77,4 +77,7 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Explicit config path: the scheduled run scans full history and would
+          # otherwise flag placeholder secrets in our *.env.example templates.
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.gitleaks.toml
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # only for org accounts

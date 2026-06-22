@@ -1,0 +1,17 @@
+# Gitleaks configuration — extends the bundled default ruleset.
+# The scheduled Security run scans the FULL git history; placeholder values in
+# our committed *.env.example templates (e.g. a throwaway 32-byte base64
+# ENCRYPTION_KEY so `cp .env.example .env && docker compose up` boots in one
+# command) are high-entropy enough to trip the generic-api-key rule even though
+# they are not real secrets. Allowlist the example templates by path — they must
+# only ever contain placeholders, never live credentials.
+title = "CredFlow gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore placeholder secrets in committed *.env.example templates"
+paths = [
+  '''(^|/)\.env\.example$''',
+]
