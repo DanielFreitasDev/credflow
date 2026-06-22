@@ -47,7 +47,7 @@ export function CustomerFormPage() {
     reset,
     watch,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
+  } = useForm<z.input<typeof schema>, unknown, FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { type: 'INDIVIDUAL', status: 'PROSPECT', monthlyIncome: 0, internalScore: 500 },
   });

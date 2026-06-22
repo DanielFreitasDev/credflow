@@ -81,7 +81,7 @@ export function DashboardPage() {
               <XAxis dataKey="label" tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
               <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} />
               <Tooltip
-                formatter={(v: number) => currency(v)}
+                formatter={(v) => currency(Number(v))}
                 cursor={{ fill: isDark ? 'rgba(37,94,235,0.18)' : '#eff6ff' }}
                 contentStyle={tooltipStyle}
                 labelStyle={{ color: isDark ? '#f1f5f9' : '#0f172a' }}
@@ -105,7 +105,10 @@ export function DashboardPage() {
                 innerRadius={55}
                 outerRadius={90}
                 paddingAngle={2}
-                label={(e) => `${e.band}: ${e.count}`}
+                label={(e) => {
+                  const d = e.payload as { band: string; count: number };
+                  return `${d.band}: ${d.count}`;
+                }}
               >
                 {data.customersByRisk.map((e) => (
                   <Cell key={e.band} fill={RISK_COLORS[e.band]} />
