@@ -1,11 +1,23 @@
-# Release — cut on an annotated tag `vX.Y.Z`. Builds immutable, versioned images
-# for both apps, publishes them to GHCR, generates a CycloneDX SBOM per app, and
-# creates a GitHub Release with auto-generated notes + the SBOMs attached.
+# Release — builds immutable, versioned images for both apps, publishes them to
+# GHCR, generates a CycloneDX SBOM per app, and creates a GitHub Release with
+# auto-generated notes + the SBOMs attached.
+#
+# Triggered two ways, both producing an identical release for tag `vX.Y.Z`:
+#   • directly, by pushing an annotated `v*` tag (manual / hotfix), or
+#   • via `workflow_call` from auto-release.yml, which derives the next SemVer
+#     from Conventional Commits on a push to `main` and passes it as inputs.tag.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: "Version tag to release (e.g. v1.2.3). Defaults to the pushed tag."
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -33,6 +45,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set lowercase image ref
         id: img
@@ -56,8 +70,8 @@ jobs:
         with:
           images: ${{ steps.img.outputs.name }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ inputs.tag || github.ref_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag || github.ref_name }}
             type=sha,prefix=sha-,format=long
 
       - name: Build and push
@@ -100,5 +114,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           generate_release_notes: true
           files: "*.cdx.json"
