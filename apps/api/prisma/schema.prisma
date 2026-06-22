@@ -1,17 +1,24 @@
 // CredFlow — Prisma schema
 // Money is stored as Decimal(14,2); rates as Decimal(9,6) (fraction, e.g. 0.025000 = 2.5%/month).
 generator client {
-  provider        = "prisma-client-js"
-  // omitApi: client-level `omit` (PrismaService) so the internal
-  // `Customer.documentHash` blind index never leaves the DB layer (GA in
-  // Prisma 6 — drop on upgrade). postgresqlExtensions: lets Prisma manage the
-  // pg_trgm extension used by the customer-name trigram search indexes.
-  previewFeatures = ["omitApi", "postgresqlExtensions"]
+  // Prisma 7 generator: emits the client into the repo (output) instead of
+  // node_modules. moduleFormat=cjs keeps it importable from the CommonJS NestJS
+  // build; runtime=nodejs selects the Node driver-adapter client.
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+  runtime      = "nodejs"
+  // postgresqlExtensions: lets Prisma manage the pg_trgm extension used by the
+  // customer-name trigram search indexes. (omitApi went GA in Prisma 6 and is
+  // dropped here; the client-level `omit` lives in PrismaService.)
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
+  // Prisma 7 removed `url` from the datasource block — the migrate/introspect
+  // connection URL now lives in prisma.config.ts, and the runtime client
+  // connects through the pg driver adapter (see PrismaService).
   provider   = "postgresql"
-  url        = env("DATABASE_URL")
   extensions = [pg_trgm]
 }
 

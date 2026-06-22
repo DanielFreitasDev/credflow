@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AmortizationType, Prisma, ProposalStatus } from '@prisma/client';
+import { AmortizationType, Prisma, ProposalStatus } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse, resolveOrderBy } from '../../common/utils/pagination.util';

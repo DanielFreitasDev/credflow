@@ -16,12 +16,6 @@ updates:
       api-major:
         update-types: [major]
     ignore:
-      # Prisma 7 is a major ORM migration (breaking client + schema generator
-      # changes, DB implications) — migrate deliberately, not via auto-bump.
-      - dependency-name: prisma
-        update-types: [version-update:semver-major]
-      - dependency-name: "@prisma/client"
-        update-types: [version-update:semver-major]
       # Keep @types/node aligned with the pinned Node 24 LTS runtime.
       # (Next even LTS ~Oct 2026 = Node 26 — bump manually then.)
       - dependency-name: "@types/node"

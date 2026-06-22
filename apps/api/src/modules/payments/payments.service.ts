@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InstallmentStatus, Payment, PaymentMethod, Prisma } from '@prisma/client';
+import { InstallmentStatus, Payment, PaymentMethod, Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';

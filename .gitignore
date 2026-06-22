@@ -27,3 +27,6 @@ coverage/
 
 # Prisma
 prisma/*.db
+# Prisma 7 generated client (output of `prisma generate`; regenerated in CI,
+# Docker build, and local dev before typecheck/build/test).
+apps/api/src/generated/

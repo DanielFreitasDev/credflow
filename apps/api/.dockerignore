@@ -3,3 +3,8 @@ dist
 coverage
 .env
 *.log
+# Stale incremental build-info would make tsc skip re-emitting files in the
+# build stage (dist is excluded, so the cache would otherwise be inconsistent).
+*.tsbuildinfo
+# Prisma 7 generated client — the build stage runs `prisma generate` fresh.
+src/generated

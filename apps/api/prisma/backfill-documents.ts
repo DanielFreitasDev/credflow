@@ -10,7 +10,8 @@
  *
  *   ENCRYPTION_KEY=... [BLIND_INDEX_KEY=...] npx tsx prisma/backfill-documents.ts
  */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { onlyDigits } from '../src/common/utils/document.util';
 import {
   blindIndexWithKey,
@@ -20,7 +21,8 @@ import {
   safeDecryptWithKey,
 } from '../src/common/crypto/pii.util';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL as string });
+const prisma = new PrismaClient({ adapter });
 const KEY = Buffer.from(process.env.ENCRYPTION_KEY ?? '', 'base64');
 
 async function main() {

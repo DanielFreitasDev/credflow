@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { AnalysisDecision, ProposalStatus, RiskBand } from '@prisma/client';
+import { AnalysisDecision, ProposalStatus, RiskBand } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { ProposalsService } from '../proposals/proposals.service';

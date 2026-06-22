@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AmortizationType, CollectionStatus, InteractionChannel } from '@prisma/client';
+import { AmortizationType, CollectionStatus, InteractionChannel } from '../../../generated/prisma/client';
 import {
   IsEnum,
   IsInt,

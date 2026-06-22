@@ -8,7 +8,8 @@ import {
   PrismaClient,
   ProposalStatus,
   Role,
-} from '@prisma/client';
+} from '../src/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import * as argon2 from 'argon2';
 import { clampCet, computeCet, computeLateCharges, simulate } from '../src/domain/finance/finance';
 import { estimateIofCents } from '../src/domain/finance/fees';
@@ -18,7 +19,8 @@ import { addMonths, daysBetween, startOfDay } from '../src/common/utils/date.uti
 import { buildSequentialNumber } from '../src/common/utils/sequence.util';
 import { blindIndexWithKey, deriveBlindIndexKey, encryptWithKey, last4 } from '../src/common/crypto/pii.util';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL as string });
+const prisma = new PrismaClient({ adapter });
 
 // Same AES-256-GCM key the API uses, so seeded documents are encrypted at rest
 // and the blind index matches what the running app computes.

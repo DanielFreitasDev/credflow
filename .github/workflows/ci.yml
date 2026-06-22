@@ -121,11 +121,14 @@ jobs:
       # 3) Schema drift guard: did someone edit schema.prisma without adding a
       #    migration? Exit code 2 on any difference. Verified clean against the
       #    raw-SQL CHECK constraints + pg_trgm indexes this repo uses.
+      #    Prisma 7 removed `--from-url`; the live DB now comes from the
+      #    prisma.config.ts datasource (which reads DATABASE_URL) via
+      #    `--from-config-datasource`, and `--to-schema-datamodel` is now `--to-schema`.
       - name: Drift check (schema vs database)
         run: >-
           npx prisma migrate diff
-          --from-url "$DATABASE_URL"
-          --to-schema-datamodel ./prisma/schema.prisma
+          --from-config-datasource
+          --to-schema ./prisma/schema.prisma
           --exit-code
 
   audit:

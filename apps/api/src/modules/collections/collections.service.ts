@@ -5,7 +5,7 @@ import {
   InstallmentStatus,
   InteractionChannel,
   Prisma,
-} from '@prisma/client';
+} from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPagination, paginatedResponse } from '../../common/utils/pagination.util';

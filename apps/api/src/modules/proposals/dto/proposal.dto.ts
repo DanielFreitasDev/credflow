@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AmortizationType, ProposalStatus } from '@prisma/client';
+import { AmortizationType, ProposalStatus } from '../../../generated/prisma/client';
 import {
   IsBoolean,
   IsEnum,

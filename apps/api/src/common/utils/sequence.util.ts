@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/prisma/client';
 
 /** Builds a human-friendly document number like PRO-2026-000042. */
 export function buildSequentialNumber(prefix: string, year: number, seq: number): string {

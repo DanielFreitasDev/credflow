@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/prisma/client';
 
 /**
  * Money is handled internally as integer **cents** to avoid binary
