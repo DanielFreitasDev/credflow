@@ -7,8 +7,23 @@ import { Prisma } from '../../generated/prisma/client';
  */
 
 export function reaisToCents(value: number | string | Prisma.Decimal): number {
-  const n = typeof value === 'object' ? Number(value.toString()) : Number(value);
-  return Math.round(n * 100);
+  const raw = (typeof value === 'object' ? value.toString() : String(value)).trim();
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  // Decimal-safe conversion: assemble cents from the digits instead of computing
+  // `Math.round(n * 100)`, whose binary float multiply mis-rounds sub-cent
+  // boundaries (e.g. 1.005 -> 100 instead of 101). For the 2-decimal values the
+  // DTOs accept the result is byte-identical to the old path (no float involved
+  // at all); this only hardens the boundary against any future >2dp / computed
+  // input, honouring the "money is integer cents" invariant at the edge.
+  if (/[eE]/.test(raw)) return Math.round(n * 100); // scientific notation: fall back
+  const negative = raw.startsWith('-');
+  const [intPart = '0', fracPart = ''] = raw.replace(/^[+-]/, '').split('.');
+  const whole = Number(intPart || '0');
+  const frac2 = Number((fracPart + '00').slice(0, 2));
+  const roundUp = fracPart.length > 2 && Number(fracPart[2]) >= 5 ? 1 : 0;
+  const cents = whole * 100 + frac2 + roundUp;
+  return negative ? -cents : cents;
 }
 
 export function centsToReais(cents: number): number {

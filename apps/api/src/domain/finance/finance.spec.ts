@@ -397,3 +397,45 @@ describe('finance: IRR convergence at large scale (relative tolerance)', () => {
     expect(irr).toBeLessThan(0.0201);
   });
 });
+
+describe('finance: PRICE/SAC schedules never go negative (regression for C1)', () => {
+  // Before the fix, a rounded-up Price PMT / SAC base over-amortized the first
+  // n-1 periods so the LAST installment went negative (e.g. R$1,00 / 0% / 18m ->
+  // {principal:-2}). The DB CHECK then rejected the contract as an un-recoverable
+  // 500. Every reachable (DTO-valid) input must now stay non-negative.
+  for (const type of ['PRICE', 'SAC'] as const) {
+    it(`keeps principal/interest/amount >= 0 and sums to P for ${type}`, () => {
+      for (const P of [100, 101, 137, 199, 200, 300, 555, 4399, 99999, 1_000_000]) {
+        for (const n of [2, 3, 5, 12, 18, 24, 40, 60, 120, 420]) {
+          for (const i of [0, 0.005, 0.01, 0.02, 0.035, 0.05]) {
+            const sc = simulate({
+              principalCents: P,
+              monthlyRate: i,
+              termMonths: n,
+              amortization: type,
+            }).schedule;
+            for (const e of sc) {
+              expect(e.principal).toBeGreaterThanOrEqual(0);
+              expect(e.interest).toBeGreaterThanOrEqual(0);
+              expect(e.amount).toBeGreaterThanOrEqual(0);
+            }
+            expect(sum(sc.map((s) => s.principal))).toBe(P);
+            expect(sc[sc.length - 1].balance).toBe(0);
+          }
+        }
+      }
+    });
+  }
+
+  it('the original repro (R$1,00 / 0% / 18m PRICE) no longer yields a negative installment', () => {
+    const sc = simulate({ principalCents: 100, monthlyRate: 0, termMonths: 18, amortization: 'PRICE' }).schedule;
+    expect(sc.every((e) => e.amount >= 0 && e.principal >= 0)).toBe(true);
+    expect(sum(sc.map((s) => s.principal))).toBe(100);
+  });
+
+  it('isNonAmortizing rejects a degenerate sub-cent schedule (clean 400, not a DB 500)', () => {
+    // R$1,00 over 420 months cannot amortize >= 1 cent/installment -> degenerate.
+    const sc = simulate({ principalCents: 100, monthlyRate: 0, termMonths: 420, amortization: 'PRICE' }).schedule;
+    expect(isNonAmortizing(sc)).toBe(true);
+  });
+});

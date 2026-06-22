@@ -41,26 +41,43 @@ function buildPriceSchedule(P: number, i: number, n: number): ScheduleEntry[] {
   const pmt = pricePaymentCents(P, i, n);
   const schedule: ScheduleEntry[] = [];
   let balance = P;
+  let cumPrincipal = 0;
   for (let k = 1; k <= n; k++) {
     const interest = roundCents(balance * i);
     let principal: number;
-    let amount: number;
     if (k < n) {
-      principal = pmt - interest;
-      amount = pmt;
+      // Amortize toward the *theoretical* outstanding balance and take the
+      // difference of rounded running totals (largest-remainder rounding). This
+      // spreads the rounding residue across the schedule instead of dumping it
+      // all on the last installment — which is what made a small principal over
+      // a long term produce a NEGATIVE final installment (the rounded-up payment
+      // over-amortized the first n-1 periods). Clamping the per-period principal
+      // to [0, balance] makes "no installment is ever negative" an invariant for
+      // *any* input, not just well-behaved ones.
+      const remainingExact =
+        i === 0
+          ? P - (P * k) / n
+          : P * Math.pow(1 + i, k) - (pmt * (Math.pow(1 + i, k) - 1)) / i;
+      const targetCumPrincipal = roundCents(P - Math.max(0, remainingExact));
+      principal = Math.min(Math.max(targetCumPrincipal - cumPrincipal, 0), balance);
     } else {
-      // Final installment pays off the exact remaining balance.
+      // Final installment closes the exact remaining balance (always >= 0 now).
       principal = balance;
-      amount = principal + interest;
     }
+    cumPrincipal += principal;
     balance -= principal;
+    const amount = principal + interest;
     schedule.push({ number: k, principal, interest, amount, balance: Math.max(balance, 0) });
   }
   return schedule;
 }
 
 function buildSacSchedule(P: number, i: number, n: number): ScheduleEntry[] {
-  const basePrincipal = roundCents(P / n);
+  // Floor (not round) the constant amortization so the cumulative principal of
+  // the first n-1 installments can never exceed P. The last installment then
+  // absorbs a strictly POSITIVE rounding residue instead of going negative — a
+  // rounded-up base used to over-amortize and drive the final principal below 0.
+  const basePrincipal = Math.floor(P / n);
   const schedule: ScheduleEntry[] = [];
   let balance = P;
   for (let k = 1; k <= n; k++) {
@@ -217,6 +234,14 @@ export const MIN_FIRST_PRINCIPAL_FRACTION = 0.001;
 export const MAX_TOTAL_INTEREST_MULTIPLE = 100;
 
 export function isNonAmortizing(schedule: ScheduleEntry[]): boolean {
+  if (schedule.length === 0) return false;
+  // Degenerate guard (both directions): a schedule must never contain a
+  // non-positive payment or a negative principal/interest component. This
+  // catches over-amortizing schedules — e.g. a sub-cent installment from an
+  // absurdly small principal over a long term — and rejects them at the product
+  // boundary with a clean 400 instead of violating the DB non-negativity CHECK
+  // (`installment_amounts_nonneg`) and surfacing as an un-contractable 500.
+  if (schedule.some((e) => e.amount <= 0 || e.principal < 0 || e.interest < 0)) return true;
   if (schedule.length <= 1) return false;
   // Any non-final installment that pays no principal is a balloon.
   if (schedule.slice(0, -1).some((e) => e.principal <= 0)) return true;
