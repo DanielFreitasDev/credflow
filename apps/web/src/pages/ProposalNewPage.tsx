@@ -193,7 +193,7 @@ export function ProposalNewPage() {
           </div>
 
           <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-            <input type="checkbox" checked={autoIof} onChange={(e) => setAutoIof(e.target.checked)} className="h-4 w-4 rounded border-slate-300 dark:border-slate-700" />
+            <input type="checkbox" checked={autoIof} onChange={(e) => setAutoIof(e.target.checked)} className="h-4 w-4 rounded-sm border-slate-300 dark:border-slate-700" />
             Calcular IOF automaticamente
           </label>
 

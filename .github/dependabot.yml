@@ -38,11 +38,6 @@ updates:
         update-types: [minor, patch]
       web-major:
         update-types: [major]
-    ignore:
-      # Tailwind 4 is a ground-up rewrite (CSS-first config) that would touch the
-      # whole design system / dark-mode setup — migrate deliberately.
-      - dependency-name: tailwindcss
-        update-types: [version-update:semver-major]
 
   # ---- GitHub Actions (keeps SHA pins current; one grouped PR) ----
   - package-ecosystem: github-actions

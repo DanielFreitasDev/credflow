@@ -222,7 +222,7 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={clsx('card w-full p-6 focus:outline-none', widths[size])}
+        className={clsx('card w-full p-6 focus:outline-hidden', widths[size])}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">

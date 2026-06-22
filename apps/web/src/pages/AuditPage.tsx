@@ -54,7 +54,7 @@ export function AuditPage() {
                         <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
                           Ver dados
                         </summary>
-                        <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-600 dark:text-slate-300 ring-1 ring-slate-100 dark:ring-slate-800">
+                        <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-600 dark:text-slate-300 ring-1 ring-slate-100 dark:ring-slate-800">
                           {JSON.stringify(log.after, null, 2)}
                         </pre>
                       </details>

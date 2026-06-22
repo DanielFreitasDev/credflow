@@ -59,7 +59,7 @@ export function DataTable<T extends { id: string }>({
                       type="button"
                       onClick={() => onSort!(c.key)}
                       className={clsx(
-                        'inline-flex items-center gap-1 font-semibold uppercase tracking-wide transition hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 dark:hover:text-slate-200',
+                        'inline-flex items-center gap-1 font-semibold uppercase tracking-wide transition hover:text-slate-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 dark:hover:text-slate-200',
                         c.align === 'right' && 'flex-row-reverse',
                         active && 'text-slate-700 dark:text-slate-200',
                       )}
@@ -99,7 +99,7 @@ export function DataTable<T extends { id: string }>({
               className={clsx(
                 'transition',
                 onRowClick &&
-                  'cursor-pointer hover:bg-brand-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400 dark:hover:bg-brand-500/10',
+                  'cursor-pointer hover:bg-brand-50/40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400 dark:hover:bg-brand-500/10',
               )}
             >
               {columns.map((c) => (

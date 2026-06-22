@@ -31,7 +31,7 @@ export function Logo({
       <img src="/brand/credflow_symbol_tight.svg" alt="" className={clsx('w-auto', s.symbol)} />
       <span className={clsx('font-extrabold leading-none tracking-tight', s.text)}>
         <span className={onDark ? 'text-white' : 'text-slate-900 dark:text-white'}>Cred</span>
-        <span className="bg-gradient-to-r from-[#255EEB] via-[#16C7E6] to-[#30D17A] bg-clip-text text-transparent">
+        <span className="bg-linear-to-r from-[#255EEB] via-[#16C7E6] to-[#30D17A] bg-clip-text text-transparent">
           Flow
         </span>
       </span>

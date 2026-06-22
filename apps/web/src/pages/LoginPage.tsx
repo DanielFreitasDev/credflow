@@ -30,7 +30,7 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#102A56] to-[#071427] p-4">
+    <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-[#102A56] to-[#071427] p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <Logo size="lg" onDark />
