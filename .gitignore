@@ -13,6 +13,10 @@ build/
 .env.local
 .env.*.local
 
+# Local-only Compose overrides (machine-specific: proxy, ports, etc.)
+docker-compose.override.yml
+docker-compose.override.yaml
+
 # Logs
 logs/
 *.log

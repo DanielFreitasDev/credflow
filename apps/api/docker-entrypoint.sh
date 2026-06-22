@@ -7,20 +7,32 @@ set -e
 # lets `prisma db seed` find `tsx` when it runs the seed command.
 export PATH="/app/node_modules/.bin:$PATH"
 
-echo "⏳ Applying database migrations..."
-prisma migrate deploy
+# Migrations run on boot by default (the app needs an up-to-date schema). For a
+# horizontally-scaled rollout, run `migrate deploy` ONCE as a separate one-shot
+# job / init-container and set RUN_MIGRATIONS=false on the app replicas so N
+# instances don't race the same migration on startup.
+if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
+  echo "⏳ Applying database migrations..."
+  prisma migrate deploy
+else
+  echo "⏭️  RUN_MIGRATIONS=false — skipping migrations."
+fi
 
 # Encrypt any legacy plaintext documents left by the protect_customer_document
 # migration BEFORE seeding. Idempotent (no-op once every row has a documentHash),
 # and required first so the seed's upsert-by-hash matches existing rows instead
-# of inserting encrypted duplicates.
-echo "🔐 Backfilling encrypted documents (idempotent)..."
-tsx prisma/backfill-documents.ts
+# of inserting encrypted duplicates. Follows RUN_MIGRATIONS unless set explicitly.
+if [ "${RUN_BACKFILL:-${RUN_MIGRATIONS:-true}}" = "true" ]; then
+  echo "🔐 Backfilling encrypted documents (idempotent)..."
+  tsx prisma/backfill-documents.ts
+else
+  echo "⏭️  RUN_BACKFILL=false — skipping document backfill."
+fi
 
-# Seed runs on boot for dev/demo. With `set -e` a seed failure now aborts the
-# boot (instead of silently starting an empty API). In production, separate the
-# seed from the API boot by setting RUN_SEED=false.
-if [ "${RUN_SEED:-true}" = "true" ]; then
+# Seed is OFF by default so a production boot never writes demo data. Dev/demo
+# opt in explicitly (the bundled .env sets RUN_SEED=true). With `set -e` a seed
+# failure aborts the boot rather than silently starting a half-seeded API.
+if [ "${RUN_SEED:-false}" = "true" ]; then
   echo "🌱 Seeding database (idempotent)..."
   prisma db seed
 else

@@ -40,7 +40,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/api/package-lock.json
       - name: Install API deps (for Prisma CLI)
-        run: npm ci
+        run: npm ci --omit=dev # prisma is a prod dep; dev tooling isn't needed to migrate
 
       # Run migrations in a dedicated step, separate from the app boot.
       - name: Apply database migrations

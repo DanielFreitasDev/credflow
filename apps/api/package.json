@@ -100,10 +100,10 @@
     "coverageDirectory": "../coverage",
     "coverageThreshold": {
       "global": {
-        "statements": 12,
-        "branches": 7,
-        "functions": 8,
-        "lines": 12
+        "statements": 13,
+        "branches": 9,
+        "functions": 9,
+        "lines": 13
       },
       "./src/domain/finance/": {
         "statements": 88,

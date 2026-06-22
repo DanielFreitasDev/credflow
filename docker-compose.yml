@@ -28,6 +28,9 @@ services:
     build:
       context: ./apps/api
     restart: unless-stopped
+    # PID1 init that reaps zombies and forwards signals during the multi-phase
+    # boot (migrate -> backfill -> seed -> node), where a POSIX sh is PID1.
+    init: true
     env_file:
       - .env
     environment:

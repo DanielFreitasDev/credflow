@@ -21,7 +21,13 @@ import {
   safeDecryptWithKey,
 } from '../src/common/crypto/pii.util';
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL as string });
+const backfillUseSsl =
+  (process.env.DB_SSL ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true';
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL as string,
+  max: 1, // short-lived boot script
+  ...(backfillUseSsl ? { ssl: { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' } } : {}),
+});
 const prisma = new PrismaClient({ adapter });
 const KEY = Buffer.from(process.env.ENCRYPTION_KEY ?? '', 'base64');
 
