@@ -161,7 +161,7 @@ Login inicial: **`admin@credflow.dev` / `Admin@123456`**.
 
 ## 💻 Como rodar localmente (sem Docker)
 
-Pré-requisitos: **Node 20+** e um **PostgreSQL** acessível.
+Pré-requisitos: **Node 24** e um **PostgreSQL** acessível.
 
 ### 1. Banco
 Crie um banco e ajuste `DATABASE_URL`. Exemplo:

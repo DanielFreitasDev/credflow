@@ -5,7 +5,7 @@ CI exige antes de um merge.
 
 ## Pré-requisitos
 
-- **Node 20** (use o `.nvmrc` de cada app: `nvm use` em `apps/api` e `apps/web`).
+- **Node 24** (use o `.nvmrc` de cada app: `nvm use` em `apps/api` e `apps/web`).
 - **Docker** + Docker Compose (stack completa) e **PostgreSQL 16** para a API.
 
 > O repositório são **dois projetos npm independentes** sob `apps/` — não há
