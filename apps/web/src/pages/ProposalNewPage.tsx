@@ -13,9 +13,9 @@ import { ErrorState, PageHeader, Spinner } from '../components/ui';
 // Loan parameters are validated client-side for parity with the API DTOs.
 // interestRate is the monthly fraction (0.025 = 2.5%); the form edits it as a percent.
 const paramsSchema = z.object({
-  requestedAmount: z.number({ invalid_type_error: 'Informe um valor' }).min(1, 'Valor mínimo de R$ 1').max(100_000_000, 'Valor acima do permitido'),
-  termMonths: z.number({ invalid_type_error: 'Informe o prazo' }).int('Prazo deve ser inteiro').min(1, 'Mínimo de 1 mês').max(420, 'Máximo de 420 meses'),
-  interestRate: z.number({ invalid_type_error: 'Informe a taxa' }).min(0, 'Taxa não pode ser negativa').max(2, 'Taxa acima do permitido (máx. 200%)'),
+  requestedAmount: z.number({ error: 'Informe um valor' }).min(1, 'Valor mínimo de R$ 1').max(100_000_000, 'Valor acima do permitido'),
+  termMonths: z.number({ error: 'Informe o prazo' }).int('Prazo deve ser inteiro').min(1, 'Mínimo de 1 mês').max(420, 'Máximo de 420 meses'),
+  interestRate: z.number({ error: 'Informe a taxa' }).min(0, 'Taxa não pode ser negativa').max(2, 'Taxa acima do permitido (máx. 200%)'),
 });
 
 export function ProposalNewPage() {
