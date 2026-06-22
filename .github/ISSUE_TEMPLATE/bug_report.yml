@@ -1,0 +1,50 @@
+name: 🐛 Bug report
+description: Relate um comportamento incorreto (não use para falhas de segurança)
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **Falhas de segurança não vão aqui.** Use o fluxo de
+        [Política de Segurança](../security/policy).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: O que aconteceu?
+      description: Descreva o bug e o comportamento esperado.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área afetada
+      options:
+        - apps/api (backend)
+        - apps/web (frontend)
+        - Banco de dados / migrations
+        - Docker / infraestrutura
+        - CI/CD
+        - Outro / não sei
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versão / commit
+      placeholder: "ex.: main @ 7ab6637"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs relevantes
+      description: Cole logs/stack traces. **Não inclua segredos nem PII.**
+      render: shell

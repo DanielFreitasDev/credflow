@@ -1,0 +1,18 @@
+# Code owners — auto-requested as reviewers on matching paths.
+# Branch protection can require Code Owner review for these areas.
+
+# Default owner for everything.
+*                                   @DanielFreitasDev
+
+# --- Security- and money-critical areas (extra scrutiny) ---
+/apps/api/src/domain/finance/       @DanielFreitasDev
+/apps/api/src/common/crypto/        @DanielFreitasDev
+/apps/api/src/modules/auth/         @DanielFreitasDev
+/apps/api/src/modules/payments/     @DanielFreitasDev
+/apps/api/prisma/                   @DanielFreitasDev
+
+# --- CI/CD & supply chain ---
+/.github/                           @DanielFreitasDev
+/apps/api/Dockerfile                @DanielFreitasDev
+/apps/web/Dockerfile                @DanielFreitasDev
+/docker-compose.yml                 @DanielFreitasDev

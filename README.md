@@ -31,6 +31,7 @@ Sistema completo, modular e pronto para produção para empresas que oferecem cr
 - [💰 Motor financeiro](#-motor-financeiro)
 - [🔒 Segurança (OWASP)](#-segurança-owasp)
 - [🌱 Dados de demonstração](#-dados-de-demonstração)
+- [🔄 CI/CD e qualidade](#-cicd-e-qualidade)
 - [🚀 Guia de deploy](#-guia-de-deploy)
 - [🩺 Solução de problemas](#-solução-de-problemas)
 
@@ -339,6 +340,43 @@ Após o seed você terá: 5 usuários (um por perfil), 10 clientes (PF/PJ, score
 propostas em **DRAFT/UNDER_REVIEW/REJECTED**, contratos **ativos**, um **quitado**,
 um **inadimplente** (com caso de cobrança, interação e promessa) e pagamentos registrados —
 suficiente para o dashboard exibir números reais.
+
+---
+
+## 🔄 CI/CD e qualidade
+
+Pipelines em **GitHub Actions** (`.github/workflows/`). Todas as actions são fixadas por **SHA**; cada workflow usa **permissões mínimas**, `timeout-minutes` e `concurrency`. CI (sem segredos) é **separado** de CD (com ambientes protegidos).
+
+| Workflow | Dispara em | O que faz |
+|---|---|---|
+| `ci.yml` | PR + push `main` | `api` (typecheck, lint, build, testes unit **com gate de cobertura**, e2e) · `web` (typecheck, lint, **testes Vitest**, build) · `api-integration` (**Postgres real**: `migrate deploy` + status + **drift check**) · `audit` (`npm audit` prod, high+). |
+| `security.yml` | PR + push `main` + semanal | **CodeQL** (JS/TS) · **dependency-review** (bloqueia dependências high+ em PR) · **gitleaks** (segredos no histórico). |
+| `docker.yml` | PR + push `main` | **hadolint** · build das duas imagens (buildx + cache) · **Trivy** (falha em HIGH/CRITICAL de **bibliotecas da aplicação**; CVEs de SO do base image vão para a aba *Security* e são tratados pelo Dependabot) · push `:edge`/`:sha-<commit>` no GHCR em `main`. |
+| `release.yml` | tag `v*` | Imagens versionadas **imutáveis** no GHCR + **SBOM CycloneDX** por app + GitHub Release. |
+| `deploy-staging.yml` | push `main` | Migrations (passo dedicado) + rollout para **staging** + smoke em `/api/health/ready`. |
+| `deploy-production.yml` | `workflow_dispatch` / release | Migrations + rollout para **produção** com **aprovação manual** (ambiente `production`) e concorrência exclusiva. |
+| `scorecard.yml` | semanal + push `main` | **OSSF Scorecard** (postura de supply chain) → aba *Security*. |
+
+Dependências (npm dos dois apps, GitHub Actions e imagens Docker) são atualizadas pelo **Dependabot** (`.github/dependabot.yml`).
+
+### Imagens (GHCR)
+`ghcr.io/<owner>/credflow-api` e `ghcr.io/<owner>/credflow-web`. Tags: `edge` (último `main`), `sha-<commit>` (imutável) e `vX.Y.Z` (releases). A imagem da API é **slim**: roda como **non-root**, só com dependências de produção (sem ferramentas de build) e **sem `npm`/`npx` global** — o entrypoint chama os binários locais (`prisma`, `tsx`) diretamente.
+
+### Ativando os deploys (templates seguros)
+Os workflows de deploy entram no repositório **inertes** — só executam o rollout quando você opta por ligar via *variável de repositório*. O passo de rollout é um **template** (o repo não traz infra/cloud): preencha-o para o seu alvo (ssh + `docker compose`, Fly, Render, ECS, `kubectl set image`, …).
+
+| Variáveis de repositório | Secrets | Liga |
+|---|---|---|
+| `DEPLOY_STAGING_ENABLED=true`, `STAGING_URL` | `STAGING_DATABASE_URL` | Deploy de staging |
+| `DEPLOY_PRODUCTION_ENABLED=true`, `PRODUCTION_URL` | `PRODUCTION_DATABASE_URL` | Deploy de produção |
+
+Configure o ambiente **`production`** em *Settings → Environments* com **Required reviewers** (aprovação manual) e *deployment branch policy* restrita. **Rollback** = re-disparar `deploy-production.yml` com a `image_tag` anterior (as imagens são imutáveis).
+
+### Proteção da branch `main` (required status checks)
+Em *Settings → Branches*, exija estes checks antes do merge: **`api`**, **`web`**, **`api-integration`**, **`audit`**, **`codeql`**, **`dependency-review`**, **`gitleaks`** e **`docker`**. Complete com: PR obrigatório, **≥1 review** (CODEOWNERS nas áreas sensíveis — `domain/finance`, `crypto`, `prisma`, `.github`), *require branches up to date*, bloquear **force-push** e **aplicar as regras a administradores**.
+
+### Rodando o CI localmente
+Os mesmos comandos do pipeline estão em [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ---
 

@@ -1,0 +1,75 @@
+# Deploy to production — the most sensitive workflow.
+#   * Triggered manually (choose an already-published, immutable image tag) or
+#     automatically when a GitHub Release is published.
+#   * Gated by the `production` environment: configure REQUIRED REVIEWERS on it
+#     so every run waits for a human approval before any step executes.
+#   * Exclusive concurrency: never two production deploys at once.
+# SAFE TO MERGE AS-IS: inert until you set DEPLOY_PRODUCTION_ENABLED=true and
+# configure the environment + secrets.
+#
+# Rollback = re-run this workflow (workflow_dispatch) with the PREVIOUS,
+# known-good image_tag. Images are immutable, so this is deterministic.
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Immutable image tag already in GHCR (e.g. v1.2.3 or sha-<commit>)"
+        required: true
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy-production
+    if: vars.DEPLOY_PRODUCTION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production # add "Required reviewers" in repo Settings → Environments
+      url: ${{ vars.PRODUCTION_URL }}
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - name: Resolve image tag
+        id: tag
+        run: echo "value=${{ github.event.inputs.image_tag || github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: apps/api/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install API deps (for Prisma CLI)
+        run: npm ci
+
+      - name: Apply database migrations
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: npx prisma migrate deploy
+
+      # TODO: replace with your real rollout to production using the resolved tag.
+      - name: Roll out image
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          echo "Deploying ghcr.io/${GITHUB_REPOSITORY,,}-api:${IMAGE_TAG} and -web:${IMAGE_TAG} to production"
+          echo "TODO: wire this to your hosting target"
+
+      - name: Smoke test (readiness)
+        run: |
+          curl --fail --silent --show-error \
+            --retry 15 --retry-all-errors --retry-delay 8 \
+            "${{ vars.PRODUCTION_URL }}/api/health/ready"

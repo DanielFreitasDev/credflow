@@ -1,0 +1,34 @@
+name: 💡 Feature request
+description: Sugira uma melhoria ou nova funcionalidade
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema / motivação
+      description: Qual dor isso resolve? Por que agora?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposta
+      description: O que você gostaria que acontecesse.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - apps/api (backend)
+        - apps/web (frontend)
+        - Domínio financeiro
+        - CI/CD / infraestrutura
+        - Outro
+    validations:
+      required: true

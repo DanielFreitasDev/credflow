@@ -1,73 +1,144 @@
+# Continuous Integration — quality gate for every PR and for pushes to main.
+# CI only (no secrets, no deploy). Deploy/release live in separate workflows.
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
+    branches: [main] # avoid double runs on feature branches that already have a PR
+
+# Least privilege: CI only reads the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs for the same ref (saves minutes; latest commit wins).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   api:
-    name: API (NestJS)
+    name: api
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/api
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version-file: apps/api/.nvmrc # single source of truth (also used by Docker)
           cache: npm
           cache-dependency-path: apps/api/package-lock.json
-
       - name: Install dependencies
         run: npm ci
-
       - name: Generate Prisma client
         run: npx prisma generate
-
       - name: Typecheck
         run: npm run typecheck
-
       - name: Lint
-        run: npx eslint "src/**/*.ts"
-
+        run: npx eslint "src/**/*.ts" # no --fix in CI: fail on violations, don't auto-rewrite
       - name: Build
         run: npm run build
-
-      - name: Unit tests
-        run: npm test
-
-      - name: E2E tests
+      - name: Unit tests (with coverage gate)
+        run: npm run test:cov
+      - name: E2E tests (HTTP pipeline, no DB)
         run: npm run test:e2e
 
   web:
-    name: Web (React + Vite)
+    name: web
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/web
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version-file: apps/web/.nvmrc
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-
       - name: Install dependencies
         run: npm ci
-
       - name: Typecheck
         run: npm run typecheck
-
       - name: Lint
         run: npm run lint
-
+      - name: Unit tests
+        run: npm test
       - name: Build
         run: npm run build
+
+  # Exercises the Prisma data layer + migrations against a real PostgreSQL —
+  # the unit tests mock Prisma, so without this a broken migration or schema
+  # drift would only surface at runtime (migrate deploy runs on container boot).
+  api-integration:
+    name: api-integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16-alpine # same major as production
+        env:
+          POSTGRES_USER: credflow
+          POSTGRES_PASSWORD: credflow_ci
+          POSTGRES_DB: credflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U credflow -d credflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://credflow:credflow_ci@localhost:5432/credflow?schema=public
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: apps/api/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      # 1) Do all migrations apply cleanly to an empty database?
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+      # 2) Is the migration history consistent with the database?
+      - name: Migration status
+        run: npx prisma migrate status
+      # 3) Schema drift guard: did someone edit schema.prisma without adding a
+      #    migration? Exit code 2 on any difference. Verified clean against the
+      #    raw-SQL CHECK constraints + pg_trgm indexes this repo uses.
+      - name: Drift check (schema vs database)
+        run: >-
+          npx prisma migrate diff
+          --from-url "$DATABASE_URL"
+          --to-schema-datamodel ./prisma/schema.prisma
+          --exit-code
+
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # npm audit resolves against the committed lockfile — no install needed.
+      - name: Audit API (production deps, high+)
+        working-directory: apps/api
+        run: npm audit --omit=dev --audit-level=high
+      - name: Audit Web (production deps, high+)
+        working-directory: apps/web
+        run: npm audit --omit=dev --audit-level=high

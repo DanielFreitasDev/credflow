@@ -1,0 +1,7 @@
+# Dockerfile linting config (consumed by .github/workflows/docker.yml).
+ignored:
+  # Pinning exact apt package versions (openssl, ca-certificates) is impractical:
+  # it breaks on every upstream security bump and pins us to stale, vulnerable
+  # versions. We rely on the slim base image + Trivy image scanning instead.
+  - DL3008
+failure-threshold: warning

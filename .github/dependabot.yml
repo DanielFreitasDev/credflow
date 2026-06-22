@@ -1,0 +1,42 @@
+# Keeps dependencies and pinned action SHAs up to date. Grouped minor/patch
+# bumps reduce PR noise; majors come through individually for review.
+version: 2
+updates:
+  # ---- Backend (NestJS) ----
+  - package-ecosystem: npm
+    directory: /apps/api
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      api-minor-patch:
+        update-types: [minor, patch]
+
+  # ---- Frontend (React + Vite) ----
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      web-minor-patch:
+        update-types: [minor, patch]
+
+  # ---- GitHub Actions (keeps SHA pins current) ----
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  # ---- Docker base images ----
+  - package-ecosystem: docker
+    directory: /apps/api
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /apps/web
+    schedule:
+      interval: weekly

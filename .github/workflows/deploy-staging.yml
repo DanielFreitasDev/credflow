@@ -1,0 +1,62 @@
+# Deploy to staging — runs automatically after a push to main is green.
+# SAFE TO MERGE AS-IS: the job is inert until you set the repository variable
+# DEPLOY_STAGING_ENABLED=true and configure the `staging` environment + secrets.
+# The actual rollout step is a template — fill it in for your hosting target
+# (the repo ships no cloud/IaC, so the mechanism is intentionally left open).
+name: Deploy Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One staging deploy at a time; do NOT cancel an in-flight rollout.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy-staging
+    if: vars.DEPLOY_STAGING_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: apps/api/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install API deps (for Prisma CLI)
+        run: npm ci
+
+      # Run migrations in a dedicated step, separate from the app boot.
+      - name: Apply database migrations
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: npx prisma migrate deploy
+
+      # TODO: replace with your real rollout (ssh + docker compose, Fly, Render,
+      # ECS, `kubectl set image`, ...). The :edge image was published by docker.yml.
+      - name: Roll out :edge image
+        run: |
+          echo "Deploying ghcr.io/${GITHUB_REPOSITORY,,}-api:edge and -web:edge to staging"
+          echo "TODO: wire this to your hosting target"
+
+      - name: Smoke test (readiness)
+        run: |
+          curl --fail --silent --show-error \
+            --retry 10 --retry-all-errors --retry-delay 6 \
+            "${{ vars.STAGING_URL }}/api/health/ready"
