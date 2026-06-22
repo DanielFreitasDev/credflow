@@ -25,7 +25,7 @@ const interactionSchema = z.object({
 type InteractionValues = z.infer<typeof interactionSchema>;
 
 const promiseSchema = z.object({
-  amount: z.coerce.number({ invalid_type_error: 'Informe um valor' }).positive('O valor deve ser maior que zero'),
+  amount: z.coerce.number({ error: 'Informe um valor' }).positive('O valor deve ser maior que zero'),
   promisedDate: z
     .string()
     .min(1, 'Informe a data')
@@ -53,7 +53,7 @@ export function CollectionDetailPage() {
     defaultValues: { channel: 'PHONE', notes: '' },
   });
 
-  const promiseForm = useForm<PromiseValues>({
+  const promiseForm = useForm<z.input<typeof promiseSchema>, unknown, PromiseValues>({
     resolver: zodResolver(promiseSchema),
     defaultValues: { amount: 0, promisedDate: today() },
   });

@@ -162,7 +162,7 @@ export function ContractDetailPage() {
 }
 
 const paymentSchema = z.object({
-  amount: z.coerce.number({ invalid_type_error: 'Informe um valor' }).positive('O valor deve ser maior que zero'),
+  amount: z.coerce.number({ error: 'Informe um valor' }).positive('O valor deve ser maior que zero'),
   method: z.string().min(1),
   paidAt: z.string().min(1, 'Informe a data'),
 });
@@ -181,7 +181,7 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
     watch,
     setValue,
     formState: { errors, isSubmitting },
-  } = useForm<PaymentValues>({
+  } = useForm<z.input<typeof paymentSchema>, unknown, PaymentValues>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       amount: installment.amountDue - installment.amountPaid,
@@ -286,7 +286,7 @@ function RenegotiateModal({ open, contract, onClose, onDone }: { open: boolean; 
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<RenegValues>({
+  } = useForm<z.input<typeof renegSchema>, unknown, RenegValues>({
     resolver: zodResolver(renegSchema),
     defaultValues: {
       termMonths: contract.termMonths,

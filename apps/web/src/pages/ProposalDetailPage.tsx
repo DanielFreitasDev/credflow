@@ -239,7 +239,7 @@ function DecisionModal({ open, onClose, proposalId, requested, onDone }: { open:
     handleSubmit,
     watch,
     formState: { errors, isSubmitting },
-  } = useForm<DecisionValues>({
+  } = useForm<z.input<typeof decisionSchema>, unknown, DecisionValues>({
     resolver: zodResolver(decisionSchema),
     defaultValues: { decision: 'APPROVED', approvedAmount: requested, reason: '' },
   });
@@ -304,7 +304,7 @@ function ContractModal({ open, onClose, proposalId, onDone }: { open: boolean; o
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<ContractValues>({
+  } = useForm<z.input<typeof contractSchema>, unknown, ContractValues>({
     resolver: zodResolver(contractSchema),
     defaultValues: { startDate: '', firstDueDate: '', lateFee: 2, lateInterest: 1 },
   });
