@@ -19,7 +19,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const notify = useCallback(
     (type: ToastType, message: string) => {
       const id = ++counter;
-      setToasts((t) => [...t, { id, type, message }]);
+      // Cap the visible stack so a burst of errors can't overflow the viewport.
+      setToasts((t) => [...t, { id, type, message }].slice(-5));
       setTimeout(() => remove(id), 4500);
     },
     [remove],

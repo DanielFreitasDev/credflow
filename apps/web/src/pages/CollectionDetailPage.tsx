@@ -9,7 +9,7 @@ import { api, apiError } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { useAuth } from '../lib/auth';
 import { CollectionCase } from '../lib/types';
-import { collectionStatusLabel, currency, date, dateTime } from '../lib/format';
+import { collectionStatusLabel, currency, date, dateInputToIso, dateTime } from '../lib/format';
 import { ConfirmDialog, ErrorState, LoadingState, PageHeader, Spinner, StatusBadge, Stat } from '../components/ui';
 
 const CHANNELS = ['PHONE', 'EMAIL', 'SMS', 'WHATSAPP', 'LETTER', 'VISIT', 'SYSTEM'];
@@ -58,7 +58,16 @@ export function CollectionDetailPage() {
     defaultValues: { amount: 0, promisedDate: today() },
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['collection', id] });
+  // A collections change (status, promise, renegotiation) can flip the linked
+  // contract to/from DEFAULTED and move portfolio KPIs, so refresh those caches
+  // too — not just this case — to avoid showing stale figures elsewhere.
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['collection', id] });
+    qc.invalidateQueries({ queryKey: ['collections'] });
+    qc.invalidateQueries({ queryKey: ['contracts'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+    if (c?.contract?.id) qc.invalidateQueries({ queryKey: ['contract', c.contract.id] });
+  };
 
   const interactionMut = useMutation({
     mutationFn: async (v: InteractionValues) => api.post(`/collections/${id}/interactions`, v),
@@ -68,7 +77,7 @@ export function CollectionDetailPage() {
 
   const promiseMut = useMutation({
     mutationFn: async (v: PromiseValues) =>
-      api.post(`/collections/${id}/promises`, { amount: v.amount, promisedDate: new Date(v.promisedDate).toISOString() }),
+      api.post(`/collections/${id}/promises`, { amount: v.amount, promisedDate: dateInputToIso(v.promisedDate) }),
     onSuccess: () => { promiseForm.reset({ amount: 0, promisedDate: today() }); toast.success('Promessa registrada'); invalidate(); },
     onError: (e) => toast.error(apiError(e)),
   });

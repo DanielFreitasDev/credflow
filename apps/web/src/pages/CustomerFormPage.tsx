@@ -6,6 +6,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { api, apiError } from '../lib/api';
+import { dateInputToIso } from '../lib/format';
 import { Customer } from '../lib/types';
 import { useToast } from '../lib/toast';
 import { LoadingState, PageHeader, Spinner } from '../components/ui';
@@ -94,8 +95,8 @@ export function CustomerFormPage() {
       document: v.document,
       email: v.email || undefined,
       phone: v.phone || undefined,
-      birthDate: v.type === 'INDIVIDUAL' && v.birthDate ? new Date(v.birthDate).toISOString() : undefined,
-      foundationDate: v.type === 'COMPANY' && v.foundationDate ? new Date(v.foundationDate).toISOString() : undefined,
+      birthDate: v.type === 'INDIVIDUAL' && v.birthDate ? dateInputToIso(v.birthDate) : undefined,
+      foundationDate: v.type === 'COMPANY' && v.foundationDate ? dateInputToIso(v.foundationDate) : undefined,
       occupation: v.occupation || undefined,
       monthlyIncome: v.monthlyIncome,
       internalScore: v.internalScore,

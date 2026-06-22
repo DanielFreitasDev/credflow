@@ -1,6 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const API_URL = (import.meta.env.VITE_API_URL as string) ?? 'http://localhost:3333';
+// Strip any trailing slash so `${API_URL}/api` can't become `//api` (a silent
+// 404-everything misconfig that's baked into the bundle at build time).
+const API_URL = ((import.meta.env.VITE_API_URL as string) ?? 'http://localhost:3333').replace(/\/+$/, '');
 
 const ACCESS_KEY = 'cf_access';
 const REFRESH_KEY = 'cf_refresh';
@@ -55,14 +57,23 @@ api.interceptors.response.use(
     const isAuthRoute = original?.url?.includes('/auth/');
     if (error.response?.status === 401 && original && !original._retry && !isAuthRoute) {
       original._retry = true;
-      refreshing = refreshing ?? performRefresh();
+      // Dedupe concurrent refreshes through ONE shared promise, cleared only when
+      // it settles (in the `.finally`), never per-consumer. Resetting it in each
+      // awaiting handler let a 401 arriving a microtask later start a SECOND
+      // refresh with the already-rotated token, tripping the backend's reuse
+      // detection and logging the user out mid-session.
+      refreshing =
+        refreshing ??
+        performRefresh().finally(() => {
+          refreshing = null;
+        });
       const newToken = await refreshing;
-      refreshing = null;
       if (newToken) {
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
       }
-      // Refresh failed — bounce to login.
+      // Refresh failed — clear any stale tokens and bounce to login.
+      tokenStore.clear();
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }

@@ -12,6 +12,7 @@ import { Proposal } from '../lib/types';
 import {
   amortizationLabel,
   currency,
+  dateInputToIso,
   dateTime,
   decisionLabel,
   percentFromFraction,
@@ -37,6 +38,9 @@ export function ProposalDetailPage() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['proposal', id] });
     qc.invalidateQueries({ queryKey: ['proposals'] });
+    // Generating a contract from a proposal creates a contract and shifts KPIs.
+    qc.invalidateQueries({ queryKey: ['contracts'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
   };
 
   const action = useMutation({
@@ -312,8 +316,8 @@ function ContractModal({ open, onClose, proposalId, onDone }: { open: boolean; o
   const submit = async (v: ContractValues) => {
     try {
       const res = await api.post(`/contracts/from-proposal/${proposalId}`, {
-        startDate: v.startDate ? new Date(v.startDate).toISOString() : undefined,
-        firstDueDate: v.firstDueDate ? new Date(v.firstDueDate).toISOString() : undefined,
+        startDate: v.startDate ? dateInputToIso(v.startDate) : undefined,
+        firstDueDate: v.firstDueDate ? dateInputToIso(v.firstDueDate) : undefined,
         lateFeeRate: v.lateFee / 100,
         lateInterestRate: v.lateInterest / 100,
       });

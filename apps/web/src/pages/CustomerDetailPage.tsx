@@ -22,7 +22,7 @@ export function CustomerDetailPage() {
     queryKey: ['customer', id],
     queryFn: async () => (await api.get<Customer>(`/customers/${id}`)).data,
   });
-  const { data: history } = useQuery({
+  const { data: history, isLoading: historyLoading } = useQuery({
     queryKey: ['customer-history', id],
     queryFn: async () => (await api.get<FinancialHistory>(`/customers/${id}/financial-history`)).data,
   });
@@ -124,8 +124,12 @@ export function CustomerDetailPage() {
                   <span className="text-slate-500 dark:text-slate-400">Ativos: <strong className="text-slate-800 dark:text-slate-100">{history.activeContracts}</strong></span>
                 </div>
               </div>
-            ) : (
+            ) : historyLoading ? (
               <p className="text-sm text-slate-400 dark:text-slate-500">Carregando...</p>
+            ) : (
+              <p className="text-sm text-rose-600 dark:text-rose-400">
+                Não foi possível carregar o histórico financeiro.
+              </p>
             )}
           </div>
         </div>

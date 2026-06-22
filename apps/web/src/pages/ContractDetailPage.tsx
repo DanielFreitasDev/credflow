@@ -14,6 +14,7 @@ import {
   contractStatusLabel,
   currency,
   date,
+  dateInputToIso,
   dateTime,
   installmentStatusLabel,
   percentFromFraction,
@@ -195,7 +196,7 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
   const { data: charges } = useQuery({
     queryKey: ['charges', installment.id, paidAt],
     queryFn: async () =>
-      (await api.get<ChargesPreview>(`/contracts/installments/${installment.id}/charges`, { params: { date: new Date(paidAt).toISOString() } })).data,
+      (await api.get<ChargesPreview>(`/contracts/installments/${installment.id}/charges`, { params: { date: dateInputToIso(paidAt) } })).data,
     enabled: !!paidAt,
   });
 
@@ -207,7 +208,7 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
 
   const submit = async (v: PaymentValues) => {
     try {
-      await api.post('/payments', { installmentId: installment.id, amount: v.amount, method: v.method, paidAt: new Date(v.paidAt).toISOString(), idempotencyKey });
+      await api.post('/payments', { installmentId: installment.id, amount: v.amount, method: v.method, paidAt: dateInputToIso(v.paidAt), idempotencyKey });
       toast.success('Pagamento registrado');
       onDone();
       onClose();

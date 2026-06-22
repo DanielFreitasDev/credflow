@@ -18,6 +18,14 @@ export const date = (iso?: string | null): string =>
 export const dateTime = (iso?: string | null): string =>
   iso ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso)) : '—';
 
+/**
+ * Converts a `<input type="date">` value (yyyy-mm-dd) to an ISO timestamp anchored
+ * at LOCAL noon, so the calendar day survives the UTC conversion in any timezone.
+ * A bare `new Date('yyyy-mm-dd')` parses as UTC midnight and shifts a day back in
+ * negative-UTC zones (e.g. America/Sao_Paulo), landing charges/dates on the wrong day.
+ */
+export const dateInputToIso = (value: string): string => new Date(`${value}T12:00:00`).toISOString();
+
 export const formatDocument = (doc?: string): string => {
   if (!doc) return '—';
   const d = doc.replace(/\D/g, '');
