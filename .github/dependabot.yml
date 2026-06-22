@@ -22,7 +22,8 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: "@prisma/client"
         update-types: [version-update:semver-major]
-      # Keep @types/node aligned with the pinned Node 20 LTS runtime.
+      # Keep @types/node aligned with the pinned Node 24 LTS runtime.
+      # (Next even LTS ~Oct 2026 = Node 26 — bump manually then.)
       - dependency-name: "@types/node"
         update-types: [version-update:semver-major]
 
@@ -58,7 +59,8 @@ updates:
     schedule:
       interval: weekly
     ignore:
-      # Pin to Node 20 LTS (matches .nvmrc + package.json engines).
+      # Pin to Node 24 LTS (matches .nvmrc + package.json engines).
+      # (Next even LTS ~Oct 2026 = Node 26 — bump manually then.)
       - dependency-name: node
         update-types: [version-update:semver-major]
   - package-ecosystem: docker

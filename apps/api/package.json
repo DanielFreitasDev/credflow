@@ -4,7 +4,7 @@
   "description": "CredFlow — Credit & Loan Management API",
   "license": "MIT",
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=24 <25"
   },
   "scripts": {
     "build": "nest build",
@@ -60,7 +60,7 @@
     "@nestjs/testing": "^11.0.0",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
-    "@types/node": "^20.16.10",
+    "@types/node": "^24.13.2",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^7.2.0",
     "eslint": "^10.5.0",

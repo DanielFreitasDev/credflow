@@ -1,5 +1,5 @@
 # ---- Build stage (full deps: compile TS + generate Prisma client) ----
-FROM node:20-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
@@ -13,7 +13,7 @@ RUN npx prisma generate && npm run build
 # the entrypoint for migrate/backfill/seed) and generates the client against
 # them. This keeps dev tooling (jest, eslint, ts-jest, @nestjs/cli, ...) — and
 # its vulnerable transitive packages — OUT of the runtime image.
-FROM node:20-bookworm-slim AS prod-deps
+FROM node:24-bookworm-slim AS prod-deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
@@ -21,7 +21,7 @@ COPY prisma ./prisma
 RUN npm ci --omit=dev && npx prisma generate
 
 # ---- Runtime stage ----
-FROM node:20-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
