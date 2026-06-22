@@ -49,6 +49,7 @@ Sistema completo, modular e pronto para produção para empresas que oferecem cr
 | **Cobrança** | Régua automática (marca vencidos, abre/fecha casos), dias em atraso, interações, promessas de pagamento, **renegociação de dívida** (consolida saldo em novo contrato). |
 | **Dashboard** | Carteira, total emprestado/recebido/em atraso, taxa de inadimplência, propostas/contratos por status, clientes por risco, fluxo de recebimentos futuros (6 meses). |
 | **Segurança** | JWT (access + refresh com rotação), Argon2id, RBAC por papéis, Helmet, rate limiting, validação forte, **criptografia AES-256-GCM** de PII sensível, trilha de auditoria. |
+| **Interface** | Tema claro/escuro persistente, layout responsivo na paleta da marca e uma tela de login com **fundo animado de "fluxo de crédito"** — um campo de partículas em canvas (sem dependências) que percorre o gradiente da marca e respeita `prefers-reduced-motion`. |
 
 ---
 

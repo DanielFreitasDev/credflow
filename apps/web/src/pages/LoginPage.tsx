@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 import { apiError } from '../lib/api';
 import { Spinner } from '../components/ui';
 import { Logo } from '../components/Logo';
+import { LoginBackground } from '../components/LoginBackground';
 
 export function LoginPage() {
   const { login, user } = useAuth();
@@ -30,14 +31,15 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-[#102A56] to-[#071427] p-4">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-linear-to-br from-[#102A56] to-[#071427] p-4">
+      <LoginBackground />
+      <div className="relative z-10 w-full max-w-md">
         <div className="mb-8 text-center">
           <Logo size="lg" onDark />
           <p className="mt-3 text-sm text-brand-100">Plataforma de Gestão de Crédito e Empréstimos</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card space-y-4 p-8">
+        <form onSubmit={handleSubmit} className="card space-y-4 p-8 shadow-2xl shadow-black/40 ring-1 ring-white/10">
           <div>
             <label className="label" htmlFor="login-email">E-mail</label>
             <input
