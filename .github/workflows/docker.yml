@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Lint API Dockerfile
         uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
         with:
@@ -54,7 +54,7 @@ jobs:
             context: apps/web
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set lowercase image ref
         id: img
@@ -76,7 +76,7 @@ jobs:
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build image (load locally for scanning)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: ${{ matrix.context }}
           load: true
@@ -91,7 +91,7 @@ jobs:
       # unrelated PRs aren't blocked by base-image churn. TRIVY_PKG_TYPES is read
       # by the Trivy CLI directly, independent of the action's input mapping.
       - name: Trivy — fail on app-library HIGH/CRITICAL
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         env:
           TRIVY_PKG_TYPES: library
         with:
@@ -107,7 +107,7 @@ jobs:
       # Push-only — PRs from forks can't write security events.
       - name: Trivy — full SARIF report
         if: github.event_name == 'push'
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           image-ref: ${{ steps.img.outputs.name }}:sha-${{ github.sha }}
           scan-type: image
@@ -135,7 +135,7 @@ jobs:
 
       - name: Push image (main only — reuses the cached build)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: ${{ matrix.context }}
           push: true
