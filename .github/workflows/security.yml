@@ -50,7 +50,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      pull-requests: write # post the summary comment
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -58,7 +57,10 @@ jobs:
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
         with:
           fail-on-severity: high
-          comment-summary-in-pr: on-failure
+          # No PR comment on purpose: Dependabot/fork PRs run with a read-only
+          # GITHUB_TOKEN, so writing a comment fails with "Resource not
+          # accessible by integration". Findings still appear in the job summary
+          # and still fail this check.
 
   # Scans the full git history for leaked secrets. Free for personal/public
   # repos; an organisation account requires a GITLEAKS_LICENSE secret.
