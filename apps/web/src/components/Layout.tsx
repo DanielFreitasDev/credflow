@@ -33,7 +33,7 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/', label: 'Painel', icon: LayoutDashboard },
   { to: '/customers', label: 'Clientes', icon: Users },
   { to: '/proposals', label: 'Propostas', icon: FileText },
   { to: '/contracts', label: 'Contratos', icon: ScrollText },
@@ -89,7 +89,7 @@ export function Layout() {
           <NavLink
             to="/"
             onClick={() => setOpen(false)}
-            aria-label="CredFlow — ir para o dashboard"
+            aria-label="CredFlow — ir para o painel"
             className="inline-flex items-center"
           >
             <Logo size="sm" />

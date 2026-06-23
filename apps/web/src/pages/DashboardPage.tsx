@@ -56,7 +56,7 @@ export function DashboardPage() {
 
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle="Visão geral da carteira de crédito" />
+      <PageHeader title="Painel" subtitle="Visão geral da carteira de crédito" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <KpiCard icon={<Wallet className="h-6 w-6 text-brand-600 dark:text-brand-400" />} tone="bg-brand-50 dark:bg-brand-500/15" label="Carteira (a receber)" value={currency(kpis.portfolioOutstanding)} />

@@ -47,7 +47,7 @@ export const customerTypeLabel: Record<string, string> = {
 };
 
 export const customerStatusLabel: Record<string, string> = {
-  PROSPECT: 'Prospect',
+  PROSPECT: 'Potencial',
   ACTIVE: 'Ativo',
   INACTIVE: 'Inativo',
   BLOCKED: 'Bloqueado',
@@ -106,4 +106,44 @@ export const decisionLabel: Record<string, string> = {
   APPROVED: 'Aprovada',
   REJECTED: 'Recusada',
   MANUAL_REVIEW: 'Análise manual',
+};
+
+// ---- Audit trail: entities and actions emitted by the backend (pt-BR) ----
+export const auditEntityLabel: Record<string, string> = {
+  Customer: 'Cliente',
+  CreditProposal: 'Proposta',
+  Contract: 'Contrato',
+  Installment: 'Parcela',
+  CollectionCase: 'Cobrança',
+  PaymentPromise: 'Promessa de pagamento',
+  Report: 'Relatório',
+  User: 'Usuário',
+};
+
+export const auditActionLabel: Record<string, string> = {
+  CREATE: 'Criação',
+  UPDATE: 'Atualização',
+  CANCEL: 'Cancelamento',
+  STATUS_CHANGE: 'Alteração de status',
+  SCORE_CHANGE: 'Alteração de score',
+  CREDIT_ANALYSIS: 'Análise de crédito',
+  CREDIT_DECISION_MANUAL: 'Decisão manual de crédito',
+  PAYMENT: 'Pagamento',
+  RENEGOTIATION: 'Renegociação',
+  CONTRACT_SETTLED: 'Contrato quitado',
+  CONTRACT_DEFAULTED: 'Contrato inadimplente',
+  CONTRACT_REACTIVATED: 'Contrato reativado',
+  COLLECTION_OPENED: 'Cobrança aberta',
+  COLLECTION_RESOLVED: 'Cobrança resolvida',
+  COLLECTION_STATUS: 'Status de cobrança',
+  COLLECTION_INTERACTION: 'Interação de cobrança',
+  DUNNING_ESCALATION: 'Escalonamento da régua',
+  PAYMENT_PROMISE: 'Promessa de pagamento',
+  PROMISE_UPDATE: 'Atualização de promessa',
+  EXPORT: 'Exportação',
+  LOGIN: 'Login',
+  LOGIN_FAILED: 'Falha de login',
+  LOGIN_BLOCKED: 'Login bloqueado',
+  ACCOUNT_LOCKED: 'Conta bloqueada',
+  REFRESH_REUSE_DETECTED: 'Reúso de token detectado',
 };

@@ -169,7 +169,7 @@ export function CustomerFormPage() {
                     onChange={field.onChange}
                     onBlur={field.onBlur}
                     options={[
-                      { value: 'PROSPECT', label: 'Prospect' },
+                      { value: 'PROSPECT', label: 'Potencial' },
                       { value: 'ACTIVE', label: 'Ativo' },
                       { value: 'INACTIVE', label: 'Inativo' },
                       { value: 'BLOCKED', label: 'Bloqueado' },

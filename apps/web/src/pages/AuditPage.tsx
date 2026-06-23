@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiError } from '../lib/api';
 import { AuditLog, Paginated } from '../lib/types';
-import { dateTime } from '../lib/format';
+import { dateTime, auditEntityLabel, auditActionLabel } from '../lib/format';
 import { Badge, EmptyState, ErrorState, LoadingState, PageHeader, Pagination, Select } from '../components/ui';
 import { ExportCsvButton } from '../components/ExportCsvButton';
 
@@ -32,7 +32,7 @@ export function AuditPage() {
             onChange={(v) => { setEntity(v); setPage(1); }}
             options={[
               { value: '', label: 'Todas as entidades' },
-              ...['Customer', 'CreditProposal', 'Contract', 'Installment', 'CollectionCase', 'PaymentPromise', 'User'].map((e) => ({ value: e, label: e })),
+              ...['Customer', 'CreditProposal', 'Contract', 'Installment', 'CollectionCase', 'PaymentPromise', 'User'].map((e) => ({ value: e, label: auditEntityLabel[e] ?? e })),
             ]}
           />
         </div>
@@ -49,8 +49,8 @@ export function AuditPage() {
                 <div key={log.id} className="flex items-start justify-between gap-4 px-4 py-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="indigo">{log.action}</Badge>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{log.entity}</span>
+                      <Badge tone="indigo">{auditActionLabel[log.action] ?? log.action}</Badge>
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{auditEntityLabel[log.entity] ?? log.entity}</span>
                       {log.entityId && <span className="truncate text-xs text-slate-400 dark:text-slate-500">#{log.entityId}</span>}
                     </div>
                     {log.after != null && (

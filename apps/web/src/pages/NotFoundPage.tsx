@@ -12,11 +12,11 @@ export function NotFoundPage() {
         <p className="text-5xl font-extrabold tracking-tight text-slate-900 dark:text-slate-50">404</p>
         <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Página não encontrada</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          O endereço que você acessou não existe ou foi movido. Verifique o link ou volte para o dashboard.
+          O endereço que você acessou não existe ou foi movido. Verifique o link ou volte para o painel.
         </p>
       </div>
       <Link to="/" className="btn-primary">
-        <LayoutDashboard className="h-4 w-4" /> Voltar ao dashboard
+        <LayoutDashboard className="h-4 w-4" /> Voltar ao painel
       </Link>
     </div>
   );
