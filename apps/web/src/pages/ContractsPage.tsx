@@ -6,7 +6,7 @@ import { api, apiError } from '../lib/api';
 import { Contract, Paginated } from '../lib/types';
 import { contractStatusLabel, currency } from '../lib/format';
 import { Column, DataTable, SortState } from '../components/DataTable';
-import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, StatusBadge } from '../components/ui';
+import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, Select, StatusBadge } from '../components/ui';
 import { ExportCsvButton } from '../components/ExportCsvButton';
 
 const columns: Column<Contract>[] = [
@@ -63,12 +63,16 @@ export function ContractsPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input className="input pl-9" placeholder="Buscar por número ou cliente..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
           </div>
-          <select className="input w-auto" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-            <option value="">Todos os status</option>
-            {Object.entries(contractStatusLabel).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
+          <Select
+            className="w-full sm:w-48"
+            aria-label="Filtrar por status"
+            value={status}
+            onChange={(v) => { setStatus(v); setPage(1); }}
+            options={[
+              { value: '', label: 'Todos os status' },
+              ...Object.entries(contractStatusLabel).map(([value, label]) => ({ value, label })),
+            ]}
+          />
         </div>
 
         {isLoading ? (

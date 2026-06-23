@@ -8,7 +8,7 @@ import { useDebounce } from '../lib/hooks';
 import { useToast } from '../lib/toast';
 import { Customer, Paginated, SimulationResult } from '../lib/types';
 import { amortizationLabel, currency, formatDocument, percentFromFraction } from '../lib/format';
-import { ErrorState, PageHeader, Spinner } from '../components/ui';
+import { ErrorState, PageHeader, Select, Spinner } from '../components/ui';
 
 // Loan parameters are validated client-side for parity with the API DTOs.
 // interestRate is the monthly fraction (0.025 = 2.5%); the form edits it as a percent.
@@ -163,11 +163,13 @@ export function ProposalNewPage() {
 
           <div>
             <label className="label" htmlFor="amortizationType">Sistema de amortização</label>
-            <select id="amortizationType" className="input" aria-label="Sistema de amortização" value={amortizationType} onChange={(e) => setAmortizationType(e.target.value as 'PRICE')}>
-              {Object.entries(amortizationLabel).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
+            <Select
+              id="amortizationType"
+              aria-label="Sistema de amortização"
+              value={amortizationType}
+              onChange={(v) => setAmortizationType(v as 'PRICE' | 'SAC' | 'SIMPLE')}
+              options={Object.entries(amortizationLabel).map(([value, label]) => ({ value, label }))}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, apiError } from '../lib/api';
 import { AuditLog, Paginated } from '../lib/types';
 import { dateTime } from '../lib/format';
-import { Badge, EmptyState, ErrorState, LoadingState, PageHeader, Pagination } from '../components/ui';
+import { Badge, EmptyState, ErrorState, LoadingState, PageHeader, Pagination, Select } from '../components/ui';
 import { ExportCsvButton } from '../components/ExportCsvButton';
 
 export function AuditPage() {
@@ -25,12 +25,16 @@ export function AuditPage() {
       />
       <div className="card">
         <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 p-4">
-          <select className="input w-auto" aria-label="Filtrar por entidade" value={entity} onChange={(e) => { setEntity(e.target.value); setPage(1); }}>
-            <option value="">Todas as entidades</option>
-            {['Customer', 'CreditProposal', 'Contract', 'Installment', 'CollectionCase', 'PaymentPromise', 'User'].map((e) => (
-              <option key={e} value={e}>{e}</option>
-            ))}
-          </select>
+          <Select
+            className="w-full sm:w-60"
+            aria-label="Filtrar por entidade"
+            value={entity}
+            onChange={(v) => { setEntity(v); setPage(1); }}
+            options={[
+              { value: '', label: 'Todas as entidades' },
+              ...['Customer', 'CreditProposal', 'Contract', 'Installment', 'CollectionCase', 'PaymentPromise', 'User'].map((e) => ({ value: e, label: e })),
+            ]}
+          />
         </div>
         {isLoading ? (
           <LoadingState />

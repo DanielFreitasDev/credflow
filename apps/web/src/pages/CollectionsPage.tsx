@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth';
 import { CollectionCase, Paginated } from '../lib/types';
 import { collectionStatusLabel, currency } from '../lib/format';
 import { Column, DataTable } from '../components/DataTable';
-import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, Spinner, StatusBadge } from '../components/ui';
+import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, Select, Spinner, StatusBadge } from '../components/ui';
 import { ExportCsvButton } from '../components/ExportCsvButton';
 
 export function CollectionsPage() {
@@ -66,10 +66,16 @@ export function CollectionsPage() {
 
       <div className="card">
         <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 p-4">
-          <select className="input w-auto" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-            <option value="">Todos os status</option>
-            {Object.entries(collectionStatusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
+          <Select
+            className="w-full sm:w-60"
+            aria-label="Filtrar por status"
+            value={status}
+            onChange={(v) => { setStatus(v); setPage(1); }}
+            options={[
+              { value: '', label: 'Todos os status' },
+              ...Object.entries(collectionStatusLabel).map(([value, label]) => ({ value, label })),
+            ]}
+          />
         </div>
         {isLoading ? (
           <LoadingState />

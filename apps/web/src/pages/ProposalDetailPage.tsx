@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate, useParams, Link } from 'react-router-dom';
@@ -18,7 +18,7 @@ import {
   percentFromFraction,
   proposalStatusLabel,
 } from '../lib/format';
-import { ConfirmDialog, ErrorState, LoadingState, Modal, PageHeader, Spinner, StatusBadge, Stat } from '../components/ui';
+import { ConfirmDialog, ErrorState, LoadingState, Modal, PageHeader, Select, Spinner, StatusBadge, Stat } from '../components/ui';
 
 export function ProposalDetailPage() {
   const { id } = useParams();
@@ -240,6 +240,7 @@ function DecisionModal({ open, onClose, proposalId, requested, onDone }: { open:
   const toast = useToast();
   const {
     register,
+    control,
     handleSubmit,
     watch,
     formState: { errors, isSubmitting },
@@ -269,10 +270,22 @@ function DecisionModal({ open, onClose, proposalId, requested, onDone }: { open:
       <form onSubmit={handleSubmit(submit)} className="space-y-4">
         <div>
           <label className="label" htmlFor="dec-decision">Decisão</label>
-          <select id="dec-decision" className="input" {...register('decision')}>
-            <option value="APPROVED">Aprovar</option>
-            <option value="REJECTED">Recusar</option>
-          </select>
+          <Controller
+            control={control}
+            name="decision"
+            render={({ field }) => (
+              <Select
+                id="dec-decision"
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                options={[
+                  { value: 'APPROVED', label: 'Aprovar' },
+                  { value: 'REJECTED', label: 'Recusar' },
+                ]}
+              />
+            )}
+          />
         </div>
         {decision === 'APPROVED' && (
           <div>

@@ -11,7 +11,7 @@ import {
   formatDocument,
 } from '../lib/format';
 import { DataTable, Column, SortState } from '../components/DataTable';
-import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, StatusBadge } from '../components/ui';
+import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination, Select, StatusBadge } from '../components/ui';
 import { ExportCsvButton } from '../components/ExportCsvButton';
 
 const columns: Column<Customer>[] = [
@@ -94,17 +94,27 @@ export function CustomersPage() {
               }}
             />
           </div>
-          <select className="input w-auto" value={type} onChange={(e) => { setType(e.target.value); setPage(1); }}>
-            <option value="">Todos os tipos</option>
-            <option value="INDIVIDUAL">Pessoa Física</option>
-            <option value="COMPANY">Pessoa Jurídica</option>
-          </select>
-          <select className="input w-auto" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-            <option value="">Todos os status</option>
-            {Object.entries(customerStatusLabel).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
+          <Select
+            className="w-full sm:w-44"
+            aria-label="Filtrar por tipo"
+            value={type}
+            onChange={(v) => { setType(v); setPage(1); }}
+            options={[
+              { value: '', label: 'Todos os tipos' },
+              { value: 'INDIVIDUAL', label: 'Pessoa Física' },
+              { value: 'COMPANY', label: 'Pessoa Jurídica' },
+            ]}
+          />
+          <Select
+            className="w-full sm:w-44"
+            aria-label="Filtrar por status"
+            value={status}
+            onChange={(v) => { setStatus(v); setPage(1); }}
+            options={[
+              { value: '', label: 'Todos os status' },
+              ...Object.entries(customerStatusLabel).map(([value, label]) => ({ value, label })),
+            ]}
+          />
         </div>
 
         {isLoading ? (

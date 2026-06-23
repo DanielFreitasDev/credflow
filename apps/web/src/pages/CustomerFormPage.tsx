@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -9,7 +9,7 @@ import { api, apiError } from '../lib/api';
 import { dateInputToIso } from '../lib/format';
 import { Customer } from '../lib/types';
 import { useToast } from '../lib/toast';
-import { LoadingState, PageHeader, Spinner } from '../components/ui';
+import { LoadingState, PageHeader, Select, Spinner } from '../components/ui';
 
 const schema = z.object({
   type: z.enum(['INDIVIDUAL', 'COMPANY']),
@@ -44,6 +44,7 @@ export function CustomerFormPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     watch,
@@ -140,18 +141,42 @@ export function CustomerFormPage() {
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">Identificação</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Tipo" htmlFor="cf-type">
-              <select id="cf-type" className="input" {...register('type')}>
-                <option value="INDIVIDUAL">Pessoa Física</option>
-                <option value="COMPANY">Pessoa Jurídica</option>
-              </select>
+              <Controller
+                control={control}
+                name="type"
+                render={({ field }) => (
+                  <Select
+                    id="cf-type"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    options={[
+                      { value: 'INDIVIDUAL', label: 'Pessoa Física' },
+                      { value: 'COMPANY', label: 'Pessoa Jurídica' },
+                    ]}
+                  />
+                )}
+              />
             </Field>
             <Field label="Status" htmlFor="cf-status">
-              <select id="cf-status" className="input" {...register('status')}>
-                <option value="PROSPECT">Prospect</option>
-                <option value="ACTIVE">Ativo</option>
-                <option value="INACTIVE">Inativo</option>
-                <option value="BLOCKED">Bloqueado</option>
-              </select>
+              <Controller
+                control={control}
+                name="status"
+                render={({ field }) => (
+                  <Select
+                    id="cf-status"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    options={[
+                      { value: 'PROSPECT', label: 'Prospect' },
+                      { value: 'ACTIVE', label: 'Ativo' },
+                      { value: 'INACTIVE', label: 'Inativo' },
+                      { value: 'BLOCKED', label: 'Bloqueado' },
+                    ]}
+                  />
+                )}
+              />
             </Field>
             <Field label={type === 'COMPANY' ? 'Razão social' : 'Nome completo'} htmlFor="cf-name" error={errors.name?.message}>
               <input id="cf-name" className="input" {...register('name')} />

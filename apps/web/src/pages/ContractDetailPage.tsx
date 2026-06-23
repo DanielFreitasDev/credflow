@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate, useParams, Link } from 'react-router-dom';
@@ -19,7 +19,7 @@ import {
   installmentStatusLabel,
   percentFromFraction,
 } from '../lib/format';
-import { ErrorState, LoadingState, Modal, PageHeader, Spinner, StatusBadge, Stat } from '../components/ui';
+import { ErrorState, LoadingState, Modal, PageHeader, Select, Spinner, StatusBadge, Stat } from '../components/ui';
 
 export function ContractDetailPage() {
   const { id } = useParams();
@@ -178,6 +178,7 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const {
     register,
+    control,
     handleSubmit,
     watch,
     setValue,
@@ -258,9 +259,19 @@ function PaymentModal({ installment, onClose, onDone }: { installment: Installme
           </div>
           <div className="col-span-2">
             <label className="label" htmlFor="pay-method">Forma de pagamento</label>
-            <select id="pay-method" className="input" {...register('method')}>
-              {['PIX', 'BOLETO', 'TED', 'CASH', 'CARD', 'INTERNAL'].map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <Controller
+              control={control}
+              name="method"
+              render={({ field }) => (
+                <Select
+                  id="pay-method"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  options={['PIX', 'BOLETO', 'TED', 'CASH', 'CARD', 'INTERNAL'].map((m) => ({ value: m, label: m }))}
+                />
+              )}
+            />
           </div>
         </div>
         <p className="text-xs text-slate-400 dark:text-slate-500">Pagamento parcial é permitido (valor menor que o total devido).</p>
@@ -285,6 +296,7 @@ function RenegotiateModal({ open, contract, onClose, onDone }: { open: boolean; 
   const toast = useToast();
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<z.input<typeof renegSchema>, unknown, RenegValues>({
@@ -330,9 +342,19 @@ function RenegotiateModal({ open, contract, onClose, onDone }: { open: boolean; 
           </div>
           <div className="col-span-2">
             <label className="label" htmlFor="reneg-system">Sistema</label>
-            <select id="reneg-system" className="input" {...register('amortizationType')}>
-              {Object.entries(amortizationLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            <Controller
+              control={control}
+              name="amortizationType"
+              render={({ field }) => (
+                <Select
+                  id="reneg-system"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  options={Object.entries(amortizationLabel).map(([value, label]) => ({ value, label }))}
+                />
+              )}
+            />
           </div>
           <div className="col-span-2">
             <label className="label" htmlFor="reneg-reason">Motivo</label>

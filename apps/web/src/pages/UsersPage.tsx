@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import { useToast } from '../lib/toast';
 import { Paginated, Role, User } from '../lib/types';
 import { dateTime, roleLabel } from '../lib/format';
 import { Column, DataTable, SortState } from '../components/DataTable';
-import { Badge, EmptyState, ErrorState, LoadingState, Modal, PageHeader, Pagination, Spinner } from '../components/ui';
+import { Badge, EmptyState, ErrorState, LoadingState, Modal, PageHeader, Pagination, Select, Spinner } from '../components/ui';
 
 const ROLES: Role[] = ['ADMIN', 'MANAGER', 'ANALYST', 'OPERATOR', 'AUDITOR'];
 
@@ -116,6 +116,7 @@ function CreateUserModal({ open, onClose, onDone }: { open: boolean; onClose: ()
   const toast = useToast();
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
@@ -153,9 +154,20 @@ function CreateUserModal({ open, onClose, onDone }: { open: boolean; onClose: ()
           <input id="user-password" type="password" className="input" placeholder="mín. 12 caracteres, maiúscula, minúscula e número" {...register('password')} />
         </Field>
         <Field label="Perfil" htmlFor="user-role" error={errors.role?.message}>
-          <select id="user-role" className="input" aria-label="Perfil do usuário" {...register('role')}>
-            {ROLES.map((r) => <option key={r} value={r}>{roleLabel[r]}</option>)}
-          </select>
+          <Controller
+            control={control}
+            name="role"
+            render={({ field }) => (
+              <Select
+                id="user-role"
+                aria-label="Perfil do usuário"
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                options={ROLES.map((r) => ({ value: r, label: roleLabel[r] }))}
+              />
+            )}
+          />
         </Field>
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={close}>Cancelar</button>
@@ -178,6 +190,7 @@ function EditUserModal({ user, onClose, onDone }: { user: User | null; onClose: 
   const toast = useToast();
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
@@ -209,9 +222,20 @@ function EditUserModal({ user, onClose, onDone }: { user: User | null; onClose: 
           <input id="edit-email" type="email" className="input" {...register('email')} />
         </Field>
         <Field label="Perfil" htmlFor="edit-role" error={errors.role?.message}>
-          <select id="edit-role" className="input" aria-label="Perfil do usuário" {...register('role')}>
-            {ROLES.map((r) => <option key={r} value={r}>{roleLabel[r]}</option>)}
-          </select>
+          <Controller
+            control={control}
+            name="role"
+            render={({ field }) => (
+              <Select
+                id="edit-role"
+                aria-label="Perfil do usuário"
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                options={ROLES.map((r) => ({ value: r, label: roleLabel[r] }))}
+              />
+            )}
+          />
         </Field>
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>

@@ -1,6 +1,6 @@
-import { ReactNode, useEffect, useId, useRef } from 'react';
+import { ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { Loader2, Inbox, AlertTriangle, X } from 'lucide-react';
+import { Loader2, Inbox, AlertTriangle, X, ChevronDown, Check, Search } from 'lucide-react';
 
 type Tone = 'gray' | 'green' | 'red' | 'amber' | 'blue' | 'indigo' | 'purple';
 
@@ -287,6 +287,284 @@ export function ConfirmDialog({
   );
 }
 
+export type SelectOption = { value: string; label: string; disabled?: boolean };
+
+/**
+ * A themed, accessible dropdown that replaces the native <select> across the app.
+ * Keyboard-driven (arrows / Home / End / Enter / Esc / type-ahead), ARIA listbox
+ * semantics, dark-mode aware, and an optional search box (auto-enabled past 6
+ * options). Controlled via `value`/`onChange`; pair with RHF's <Controller> for forms.
+ */
+export function Select({
+  value,
+  onChange,
+  options,
+  id,
+  name,
+  placeholder = 'Selecione...',
+  disabled = false,
+  searchable,
+  searchPlaceholder = 'Buscar...',
+  className,
+  triggerClassName,
+  onBlur,
+  'aria-label': ariaLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectOption[];
+  id?: string;
+  name?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  /** Force the search box on/off. Defaults to auto: on when there are > 6 options. */
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  /** Classes for the wrapper — use this to set width (defaults to `w-full`). */
+  className?: string;
+  /** Extra classes for the trigger button (e.g. height/padding/text size). */
+  triggerClassName?: string;
+  onBlur?: () => void;
+  'aria-label'?: string;
+}) {
+  const baseId = useId();
+  const listboxId = `${baseId}-listbox`;
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const typeahead = useRef({ buffer: '', at: 0 });
+
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [dropUp, setDropUp] = useState(false);
+
+  const showSearch = searchable ?? options.length > 6;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+  }, [options, query]);
+
+  const selected = options.find((o) => o.value === value);
+  const activeId = filtered[activeIndex] ? `${baseId}-opt-${activeIndex}` : undefined;
+
+  const close = useCallback((refocus: boolean) => {
+    setOpen(false);
+    setQuery('');
+    if (refocus) triggerRef.current?.focus();
+  }, []);
+
+  const selectOption = useCallback(
+    (opt: SelectOption | undefined) => {
+      if (!opt || opt.disabled) return;
+      onChange(opt.value);
+      close(true);
+    },
+    [onChange, close],
+  );
+
+  const openMenu = useCallback(() => {
+    if (disabled) return;
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const below = window.innerHeight - rect.bottom;
+      setDropUp(below < 288 && rect.top > below);
+    }
+    const idx = options.findIndex((o) => o.value === value);
+    setActiveIndex(idx >= 0 ? idx : 0);
+    setOpen(true);
+  }, [disabled, options, value]);
+
+  // Focus the search box (or list) when the menu opens.
+  useEffect(() => {
+    if (open) (showSearch ? searchRef.current : listRef.current)?.focus();
+  }, [open, showSearch]);
+
+  // Keep the highlighted option scrolled into view.
+  useEffect(() => {
+    if (open) listRef.current?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [open, activeIndex, query]);
+
+  // Close when pointing outside the component.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!wrapperRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+        onBlur?.();
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [open, onBlur]);
+
+  const moveActive = (delta: number) => {
+    const n = filtered.length;
+    if (n === 0) return;
+    setActiveIndex((i) => {
+      let next = i;
+      for (let step = 0; step < n; step++) {
+        next = (next + delta + n) % n;
+        if (!filtered[next]?.disabled) return next;
+      }
+      return i;
+    });
+  };
+
+  const edgeActive = (fromEnd: boolean) => {
+    const list = fromEnd ? [...filtered].reverse() : filtered;
+    const found = list.findIndex((o) => !o.disabled);
+    if (found >= 0) setActiveIndex(fromEnd ? filtered.length - 1 - found : found);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        if (open) moveActive(1);
+        else openMenu();
+        return;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (open) moveActive(-1);
+        else openMenu();
+        return;
+      case 'Home':
+        if (open) { e.preventDefault(); edgeActive(false); }
+        return;
+      case 'End':
+        if (open) { e.preventDefault(); edgeActive(true); }
+        return;
+      case 'Enter':
+        if (open) { e.preventDefault(); selectOption(filtered[activeIndex]); }
+        return;
+      case 'Escape':
+        if (open) { e.preventDefault(); e.stopPropagation(); close(true); }
+        return;
+      case 'Tab':
+        if (open) { setOpen(false); setQuery(''); onBlur?.(); }
+        return;
+      case ' ':
+        if (!open) { e.preventDefault(); openMenu(); }
+        else if (!showSearch) { e.preventDefault(); selectOption(filtered[activeIndex]); }
+        return;
+      default:
+        // Type-ahead only when there's no search box to type into.
+        if (!showSearch && e.key.length === 1 && e.key.trim()) {
+          if (!open) openMenu();
+          const now = e.timeStamp;
+          const t = typeahead.current;
+          t.buffer = now - t.at > 800 ? e.key : t.buffer + e.key;
+          t.at = now;
+          const q = t.buffer.toLowerCase();
+          const found = options.findIndex((o) => !o.disabled && o.label.toLowerCase().startsWith(q));
+          if (found >= 0) setActiveIndex(found);
+        }
+    }
+  };
+
+  return (
+    <div ref={wrapperRef} className={clsx('relative', className ?? 'w-full')}>
+      {name && <input type="hidden" name={name} value={value} />}
+      <button
+        ref={triggerRef}
+        type="button"
+        id={id}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
+        aria-label={ariaLabel}
+        disabled={disabled}
+        onClick={() => (open ? close(true) : openMenu())}
+        onKeyDown={onKeyDown}
+        onBlur={() => { if (!open) onBlur?.(); }}
+        className={clsx(
+          'input flex w-full items-center justify-between gap-2 text-left',
+          disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+          triggerClassName,
+        )}
+      >
+        <span className={clsx('truncate', !selected && 'text-slate-400 dark:text-slate-500')}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <ChevronDown className={clsx('h-4 w-4 shrink-0 text-slate-400 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div
+          className={clsx(
+            'card absolute left-0 right-0 z-50 overflow-hidden shadow-lg ring-1 ring-black/5 dark:ring-white/10',
+            dropUp ? 'bottom-full mb-1' : 'top-full mt-1',
+          )}
+        >
+          {showSearch && (
+            <div className="flex items-center gap-2 border-b border-slate-100 px-3 dark:border-slate-800">
+              <Search className="h-4 w-4 shrink-0 text-slate-400" />
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setActiveIndex(0); }}
+                onKeyDown={onKeyDown}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                aria-controls={listboxId}
+                aria-activedescendant={activeId}
+                className="w-full bg-transparent py-2 text-sm placeholder:text-slate-400 focus:outline-hidden dark:text-slate-100"
+              />
+            </div>
+          )}
+          <ul
+            ref={listRef}
+            id={listboxId}
+            role="listbox"
+            tabIndex={-1}
+            aria-label={ariaLabel}
+            aria-activedescendant={activeId}
+            onKeyDown={showSearch ? undefined : onKeyDown}
+            className="max-h-60 overflow-auto py-1 focus:outline-hidden"
+          >
+            {filtered.length === 0 ? (
+              <li className="px-3 py-6 text-center text-sm text-slate-400 dark:text-slate-500">Nenhum resultado</li>
+            ) : (
+              filtered.map((opt, i) => {
+                const isSelected = opt.value === value;
+                const isActive = i === activeIndex;
+                return (
+                  <li
+                    key={opt.value}
+                    id={`${baseId}-opt-${i}`}
+                    role="option"
+                    aria-selected={isSelected}
+                    aria-disabled={opt.disabled || undefined}
+                    data-active={isActive || undefined}
+                    onMouseEnter={() => setActiveIndex(i)}
+                    onMouseDown={(e) => { e.preventDefault(); selectOption(opt); }}
+                    className={clsx(
+                      'flex items-center justify-between gap-2 px-3 py-2 text-sm',
+                      opt.disabled
+                        ? 'cursor-not-allowed opacity-40'
+                        : isActive
+                          ? 'cursor-pointer bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300'
+                          : 'cursor-pointer text-slate-700 dark:text-slate-200',
+                    )}
+                  >
+                    <span className="truncate">{opt.label}</span>
+                    {isSelected && <Check className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />}
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Pagination({
   page,
   totalPages,
@@ -308,18 +586,15 @@ export function Pagination({
       <div className="flex items-center gap-3">
         <span>{total} registro(s)</span>
         {pageSize != null && onPageSize && (
-          <select
-            className="input h-8 w-auto py-0 text-xs"
-            value={pageSize}
-            onChange={(e) => onPageSize(Number(e.target.value))}
+          <Select
+            className="w-32"
+            triggerClassName="h-8 py-0 text-xs"
             aria-label="Itens por página"
-          >
-            {[10, 20, 50].map((n) => (
-              <option key={n} value={n}>
-                {n} / página
-              </option>
-            ))}
-          </select>
+            searchable={false}
+            value={String(pageSize)}
+            onChange={(v) => onPageSize(Number(v))}
+            options={[10, 20, 50].map((n) => ({ value: String(n), label: `${n} / página` }))}
+          />
         )}
       </div>
       <div className="flex items-center gap-2">

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate, useParams, Link } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { useToast } from '../lib/toast';
 import { useAuth } from '../lib/auth';
 import { CollectionCase } from '../lib/types';
 import { collectionStatusLabel, currency, date, dateInputToIso, dateTime } from '../lib/format';
-import { ConfirmDialog, ErrorState, LoadingState, PageHeader, Spinner, StatusBadge, Stat } from '../components/ui';
+import { ConfirmDialog, ErrorState, LoadingState, PageHeader, Select, Spinner, StatusBadge, Stat } from '../components/ui';
 
 const CHANNELS = ['PHONE', 'EMAIL', 'SMS', 'WHATSAPP', 'LETTER', 'VISIT', 'SYSTEM'];
 // Irreversible case outcomes — confirm before applying.
@@ -120,15 +120,14 @@ export function CollectionDetailPage() {
         subtitle={c.contract?.customer?.name}
         actions={
           canChangeStatus && (
-            <select
-              className="input w-auto"
+            <Select
+              className="w-full sm:w-56"
               aria-label="Alterar status do caso"
               value={c.status}
               disabled={statusMut.isPending}
-              onChange={(e) => changeStatus(e.target.value)}
-            >
-              {Object.entries(collectionStatusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+              onChange={(v) => changeStatus(v)}
+              options={Object.entries(collectionStatusLabel).map(([value, label]) => ({ value, label }))}
+            />
           )
         }
       />
@@ -155,9 +154,20 @@ export function CollectionDetailPage() {
               className="mb-4 space-y-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3"
             >
               <div className="flex gap-2">
-                <select className="input w-auto" aria-label="Canal da interação" {...interactionForm.register('channel')}>
-                  {CHANNELS.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
-                </select>
+                <Controller
+                  control={interactionForm.control}
+                  name="channel"
+                  render={({ field }) => (
+                    <Select
+                      className="w-44 shrink-0"
+                      aria-label="Canal da interação"
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      options={CHANNELS.map((ch) => ({ value: ch, label: ch }))}
+                    />
+                  )}
+                />
                 <input className="input flex-1" aria-label="Descrição da interação" placeholder="Descreva a interação..." {...interactionForm.register('notes')} />
               </div>
               {interactionForm.formState.errors.notes && (
@@ -213,18 +223,21 @@ export function CollectionDetailPage() {
                 <div className="flex items-center gap-2">
                   <StatusBadge status={pr.status === 'KEPT' ? 'PAID' : pr.status === 'BROKEN' ? 'OVERDUE' : 'PENDING'} label={pr.status} />
                   {canAct && pr.status === 'PENDING' && (
-                    <select
-                      className="input w-auto py-1 text-xs"
+                    <Select
+                      className="w-36"
+                      triggerClassName="py-1 text-xs"
                       aria-label="Atualizar status da promessa"
-                      defaultValue=""
+                      placeholder="Atualizar"
+                      searchable={false}
+                      value=""
                       disabled={updatePromiseMut.isPending}
-                      onChange={(e) => e.target.value && updatePromiseMut.mutate({ pid: pr.id, status: e.target.value })}
-                    >
-                      <option value="">...</option>
-                      <option value="KEPT">Cumprida</option>
-                      <option value="BROKEN">Quebrada</option>
-                      <option value="CANCELLED">Cancelar</option>
-                    </select>
+                      onChange={(v) => v && updatePromiseMut.mutate({ pid: pr.id, status: v })}
+                      options={[
+                        { value: 'KEPT', label: 'Cumprida' },
+                        { value: 'BROKEN', label: 'Quebrada' },
+                        { value: 'CANCELLED', label: 'Cancelar' },
+                      ]}
+                    />
                   )}
                 </div>
               </div>
