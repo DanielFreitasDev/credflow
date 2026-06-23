@@ -28,9 +28,11 @@ export class PaymentsService {
     const payCents = reaisToCents(dto.amount);
     if (payCents <= 0) throw new BadRequestException('O valor deve ser positivo');
     const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
-    // Reject future-dated payments — they would inflate days-late and overcharge
-    // mora. Allow 60s of clock skew between client and server.
-    if (paidAt.getTime() > Date.now() + 60_000) {
+    // Reject payments dated on a future calendar day — they would inflate
+    // days-late and overcharge mora. The date-only picker pins the time to
+    // local noon, so compare by day (not instant) to allow same-day payments
+    // registered in the morning.
+    if (startOfDay(paidAt).getTime() > startOfDay(new Date()).getTime()) {
       throw new BadRequestException('A data de pagamento não pode ser futura');
     }
 

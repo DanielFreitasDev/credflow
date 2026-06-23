@@ -119,4 +119,26 @@ describe('PaymentsService.register — allocation', () => {
       service.register({ installmentId: 'inst_1', amount: 100, paidAt: future } as never, 'user_1'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('accepts a same-day payment whose timestamp is ahead of now', async () => {
+    // Regression: the web date-only picker pins today to local noon, so a
+    // payment registered in the morning arrives with a timestamp ahead of the
+    // current instant but on the same calendar day. The future check compares
+    // by day, so this must be accepted — not rejected as "future-dated".
+    const { service, created } = setup({ ...futureInstallment });
+    const now = new Date();
+    const laterToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+    );
+    await service.register(
+      { installmentId: 'inst_1', amount: 100, paidAt: laterToday.toISOString() } as never,
+      'user_1',
+    );
+    expect(created[0].interestPortion).toBe('100.00');
+  });
 });
