@@ -34,18 +34,18 @@ export class ContractsService {
     const proposal = await this.proposals.findRaw(proposalId);
 
     if (proposal.status !== ProposalStatus.APPROVED) {
-      throw new BadRequestException('Only APPROVED proposals can be contracted');
+      throw new BadRequestException('Apenas propostas aprovadas podem ser contratadas');
     }
     if (!proposal.analysis || proposal.analysis.decision !== 'APPROVED') {
-      throw new BadRequestException('Proposal has no approved credit analysis');
+      throw new BadRequestException('A proposta não possui análise de crédito aprovada');
     }
     // Re-check the customer status at contracting time — it may have been
     // blocked after the proposal was created/approved.
     if (proposal.customer.status === 'BLOCKED') {
-      throw new BadRequestException('Customer is blocked and cannot be contracted');
+      throw new BadRequestException('Cliente bloqueado e não pode ser contratado');
     }
     const existing = await this.prisma.contract.findUnique({ where: { proposalId } });
-    if (existing) throw new ConflictException('Proposal already has a contract');
+    if (existing) throw new ConflictException('A proposta já possui um contrato');
 
     // Honour the approved amount (option A: cash released to the customer). When
     // the analysis approved a value different from the requested one, IOF /
@@ -57,7 +57,7 @@ export class ContractsService {
         ? reaisToCents(proposal.analysis.approvedAmount)
         : requestedCents;
     if (approvedCents <= 0) {
-      throw new BadRequestException('Approved amount must be greater than zero to contract');
+      throw new BadRequestException('O valor aprovado deve ser maior que zero para contratar');
     }
     const costing = computeContractCosting({
       approvedCents,
@@ -207,7 +207,7 @@ export class ContractsService {
         collectionCase: true,
       },
     });
-    if (!contract) throw new NotFoundException('Contract not found');
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
     this.encryption.presentDocumentField(contract.customer, role);
     return { ...contract, summary: summarize(contract.installments) };
   }
@@ -223,7 +223,7 @@ export class ContractsService {
       where: { id: installmentId },
       include: { contract: true },
     });
-    if (!installment) throw new NotFoundException('Installment not found');
+    if (!installment) throw new NotFoundException('Parcela não encontrada');
 
     const reference = atDate ? new Date(atDate) : new Date();
     const daysLate =
@@ -259,10 +259,10 @@ export class ContractsService {
     const { before } = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Contract" WHERE id = ${id} FOR UPDATE`;
       const contract = await tx.contract.findUnique({ where: { id } });
-      if (!contract) throw new NotFoundException('Contract not found');
+      if (!contract) throw new NotFoundException('Contrato não encontrado');
       const paymentsCount = await tx.payment.count({ where: { contractId: id } });
       if (paymentsCount > 0) {
-        throw new BadRequestException('Cannot cancel a contract that already has payments; use renegotiation');
+        throw new BadRequestException('Não é possível cancelar um contrato que já possui pagamentos; use a renegociação');
       }
       await tx.contract.update({
         where: { id },
@@ -339,7 +339,7 @@ export class ContractsService {
 
   private async ensureExists(id: string) {
     const contract = await this.prisma.contract.findUnique({ where: { id } });
-    if (!contract) throw new NotFoundException('Contract not found');
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
     return contract;
   }
 }

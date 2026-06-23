@@ -135,9 +135,9 @@ export class AuthService {
     if (!user || !ok) {
       if (user) await this.registerFailedAttempt(user, meta);
       await this.audit.record({ action: 'LOGIN_FAILED', entity: 'User', after: { email }, ip: meta.ip });
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Credenciais inválidas');
     }
-    if (!user.active) throw new UnauthorizedException('User account is disabled');
+    if (!user.active) throw new UnauthorizedException('Conta de usuário desativada');
 
     // Successful login clears any failed-attempt / lock state.
     if (user.failedLoginCount > 0 || user.lockedUntil) {
@@ -170,12 +170,12 @@ export class AuthService {
         algorithms: ['HS256'],
       });
     } catch {
-      throw new UnauthorizedException('Invalid or expired refresh token');
+      throw new UnauthorizedException('Token de atualização inválido ou expirado');
     }
 
     const tokenHash = this.hashToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
-    if (!stored) throw new UnauthorizedException('Refresh token is no longer valid');
+    if (!stored) throw new UnauthorizedException('O token de atualização não é mais válido');
 
     // Reuse detection: a token that was already rotated/revoked is being
     // presented again — treat it as theft and revoke the entire token family so
@@ -192,15 +192,15 @@ export class AuthService {
         entityId: stored.userId,
         ip: meta.ip,
       });
-      throw new UnauthorizedException('Refresh token reuse detected; all sessions were revoked');
+      throw new UnauthorizedException('Reúso de token de atualização detectado; todas as sessões foram revogadas');
     }
 
     if (stored.expiresAt < new Date()) {
-      throw new UnauthorizedException('Refresh token is no longer valid');
+      throw new UnauthorizedException('O token de atualização não é mais válido');
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!user || !user.active) throw new UnauthorizedException('User is inactive');
+    if (!user || !user.active) throw new UnauthorizedException('Usuário inativo');
 
     // Rotation: revoke the used token before issuing a new pair.
     await this.prisma.refreshToken.update({
@@ -227,7 +227,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
     const ok = await argon2.verify(user.passwordHash, currentPassword).catch(() => false);
-    if (!ok) throw new UnauthorizedException('Current password is incorrect');
+    if (!ok) throw new UnauthorizedException('A senha atual está incorreta');
 
     const passwordHash = await UsersService.hashPassword(newPassword);
     await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });

@@ -43,7 +43,7 @@ export class UsersService {
 
   async create(dto: CreateUserDto): Promise<SafeUser> {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (existing) throw new ConflictException('Email already in use');
+    if (existing) throw new ConflictException('E-mail já está em uso');
 
     const passwordHash = await UsersService.hashPassword(dto.password);
     return this.prisma.user.create({
@@ -85,7 +85,7 @@ export class UsersService {
 
   async findOne(id: string): Promise<SafeUser> {
     const user = await this.prisma.user.findUnique({ where: { id }, select: SELECT_SAFE });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Usuário não encontrado');
     return user;
   }
 
@@ -151,7 +151,7 @@ export class UsersService {
       where: { role: Role.ADMIN, active: true },
     });
     if (activeAdmins <= 1) {
-      throw new BadRequestException('Cannot remove the last active administrator');
+      throw new BadRequestException('Não é possível remover o último administrador ativo');
     }
   }
 

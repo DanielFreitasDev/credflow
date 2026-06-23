@@ -119,9 +119,9 @@ export class ProposalsService {
 
   async create(dto: CreateProposalDto, actorId?: string) {
     const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
     if (customer.status === 'BLOCKED') {
-      throw new BadRequestException('Customer is blocked and cannot receive new proposals');
+      throw new BadRequestException('Cliente bloqueado e não pode receber novas propostas');
     }
 
     const c = this.compute(dto);
@@ -218,7 +218,7 @@ export class ProposalsService {
         },
       },
     });
-    if (!proposal) throw new NotFoundException('Proposal not found');
+    if (!proposal) throw new NotFoundException('Proposta não encontrada');
     this.encryption.presentDocumentField(proposal.customer, role);
 
     // Recompute the amortization schedule for display from stored terms.
@@ -247,7 +247,7 @@ export class ProposalsService {
       where: { id },
       include: { customer: true, analysis: true },
     });
-    if (!proposal) throw new NotFoundException('Proposal not found');
+    if (!proposal) throw new NotFoundException('Proposta não encontrada');
     return proposal;
   }
 
@@ -272,7 +272,7 @@ export class ProposalsService {
     client: Prisma.TransactionClient = this.prisma,
   ) {
     const proposal = await client.creditProposal.findUnique({ where: { id } });
-    if (!proposal) throw new NotFoundException('Proposal not found');
+    if (!proposal) throw new NotFoundException('Proposta não encontrada');
 
     if (proposal.status === toStatus) return proposal;
     if (!TRANSITIONS[proposal.status].includes(toStatus)) {

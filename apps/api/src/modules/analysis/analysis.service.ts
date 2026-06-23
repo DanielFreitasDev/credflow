@@ -37,7 +37,7 @@ export class AnalysisService {
       );
     }
     if (proposal.customer.status === 'BLOCKED') {
-      throw new BadRequestException('Customer is blocked and cannot be analyzed');
+      throw new BadRequestException('Cliente bloqueado e não pode ser analisado');
     }
 
     const customer = proposal.customer;
@@ -115,7 +115,7 @@ export class AnalysisService {
       );
     }
     if (proposal.customer.status === 'BLOCKED') {
-      throw new BadRequestException('Customer is blocked; cannot record a decision');
+      throw new BadRequestException('Cliente bloqueado; não é possível registrar uma decisão');
     }
 
     // The approved amount is later disbursed/contracted, so it cannot exceed the
@@ -123,7 +123,7 @@ export class AnalysisService {
     if (dto.decision === 'APPROVED' && dto.approvedAmount != null) {
       const requested = Number(proposal.requestedAmount);
       if (dto.approvedAmount <= 0) {
-        throw new BadRequestException('approvedAmount must be greater than zero');
+        throw new BadRequestException('O valor aprovado deve ser maior que zero');
       }
       if (dto.approvedAmount > requested) {
         throw new BadRequestException(

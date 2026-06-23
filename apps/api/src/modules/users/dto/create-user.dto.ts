@@ -27,7 +27,7 @@ export class CreateUserDto {
   @MinLength(12) // aligned with the self-service change-password policy
   @MaxLength(72) // argon2/bcrypt safe bound
   @Matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message: 'password must contain upper, lower case letters and a number',
+    message: 'A senha deve conter letras maiúsculas, minúsculas e número',
   })
   password!: string;
 

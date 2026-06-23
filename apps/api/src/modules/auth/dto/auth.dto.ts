@@ -37,7 +37,7 @@ export class ChangePasswordDto {
   @MinLength(12)
   @MaxLength(PASSWORD_MAX)
   @Matches(/(?=.*[A-Za-z])(?=.*\d)/, {
-    message: 'newPassword must contain both letters and numbers',
+    message: 'A nova senha deve conter letras e números',
   })
   newPassword!: string;
 }

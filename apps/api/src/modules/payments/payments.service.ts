@@ -26,12 +26,12 @@ export class PaymentsService {
    */
   async register(dto: CreatePaymentDto, actorId?: string) {
     const payCents = reaisToCents(dto.amount);
-    if (payCents <= 0) throw new BadRequestException('Amount must be positive');
+    if (payCents <= 0) throw new BadRequestException('O valor deve ser positivo');
     const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
     // Reject future-dated payments — they would inflate days-late and overcharge
     // mora. Allow 60s of clock skew between client and server.
     if (paidAt.getTime() > Date.now() + 60_000) {
-      throw new BadRequestException('paidAt cannot be in the future');
+      throw new BadRequestException('A data de pagamento não pode ser futura');
     }
 
     // Idempotent replay: a retried submission with the same key returns the
@@ -69,10 +69,10 @@ export class PaymentsService {
         where: { id: dto.installmentId },
         include: { contract: true },
       });
-      if (!installment) throw new NotFoundException('Installment not found');
-      if (installment.status === 'PAID') throw new BadRequestException('Installment is already paid');
+      if (!installment) throw new NotFoundException('Parcela não encontrada');
+      if (installment.status === 'PAID') throw new BadRequestException('A parcela já está paga');
       if (installment.status === 'CANCELLED' || installment.status === 'RENEGOTIATED') {
-        throw new BadRequestException('Installment is not payable');
+        throw new BadRequestException('A parcela não pode ser paga');
       }
 
       const amountDueCents = reaisToCents(installment.amountDue);

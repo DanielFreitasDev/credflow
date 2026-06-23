@@ -20,11 +20,11 @@ export class RolesGuard implements CanActivate {
     if (!required || required.length === 0) return true;
 
     const user = context.switchToHttp().getRequest().user as AuthUser;
-    if (!user) throw new ForbiddenException('Missing authenticated user');
+    if (!user) throw new ForbiddenException('Usuário autenticado ausente');
     if (user.role === Role.ADMIN) return true;
 
     if (!required.includes(user.role as Role)) {
-      throw new ForbiddenException('You do not have permission to perform this action');
+      throw new ForbiddenException('Você não tem permissão para executar esta ação');
     }
     return true;
   }

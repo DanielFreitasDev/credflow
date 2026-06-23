@@ -157,7 +157,7 @@ export class CustomersService {
         contracts: { orderBy: { createdAt: 'desc' }, take: 10 },
       },
     });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
     return this.decryptCustomer(customer, role);
   }
 
@@ -307,7 +307,7 @@ export class CustomersService {
 
   private async ensureExists(id: string) {
     const customer = await this.prisma.customer.findUnique({ where: { id } });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
     return customer;
   }
 }

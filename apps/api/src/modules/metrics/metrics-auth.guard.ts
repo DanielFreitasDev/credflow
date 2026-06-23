@@ -25,7 +25,7 @@ export class MetricsAuthGuard implements CanActivate {
       typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : undefined;
 
     if (!provided || !safeEqual(provided, expected)) {
-      throw new UnauthorizedException('Invalid metrics token');
+      throw new UnauthorizedException('Token de métricas inválido');
     }
     return true;
   }

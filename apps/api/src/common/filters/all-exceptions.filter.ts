@@ -31,7 +31,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message: string | string[] = 'Internal server error';
+    let message: string | string[] = 'Erro interno do servidor';
     let error = 'InternalServerError';
 
     if (exception instanceof HttpException) {
@@ -48,7 +48,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ({ status, message, error } = this.mapPrismaError(exception));
     } else if (exception instanceof Prisma.PrismaClientValidationError) {
       status = HttpStatus.BAD_REQUEST;
-      message = 'Invalid query parameters';
+      message = 'Parâmetros de consulta inválidos';
       error = 'BadRequest';
     }
     // Any other thrown value stays a generic 500: never echo an unexpected
@@ -84,26 +84,26 @@ export class AllExceptionsFilter implements ExceptionFilter {
         const target = (e.meta?.target as string[] | undefined)?.join(', ') ?? 'field';
         return {
           status: HttpStatus.CONFLICT,
-          message: `A record with this ${target} already exists`,
+          message: `Já existe um registro com este valor: ${target}`,
           error: 'Conflict',
         };
       }
       case 'P2025':
         return {
           status: HttpStatus.NOT_FOUND,
-          message: 'Record not found',
+          message: 'Registro não encontrado',
           error: 'NotFound',
         };
       case 'P2003':
         return {
           status: HttpStatus.BAD_REQUEST,
-          message: 'Related record not found (foreign key constraint)',
+          message: 'Registro relacionado não encontrado (restrição de chave estrangeira)',
           error: 'BadRequest',
         };
       default:
         return {
           status: HttpStatus.BAD_REQUEST,
-          message: `Database error (${e.code})`,
+          message: `Erro de banco de dados (${e.code})`,
           error: 'BadRequest',
         };
     }

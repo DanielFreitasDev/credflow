@@ -372,7 +372,7 @@ export class CollectionsService {
         promises: { orderBy: { createdAt: 'desc' }, include: { createdBy: { select: { id: true, name: true } } } },
       },
     });
-    if (!cse) throw new NotFoundException('Collection case not found');
+    if (!cse) throw new NotFoundException('Caso de cobrança não encontrado');
     this.encryption.presentDocumentField(cse.contract?.customer, role);
     return cse;
   }
@@ -414,7 +414,7 @@ export class CollectionsService {
 
   async updatePromise(promiseId: string, status: 'KEPT' | 'BROKEN' | 'CANCELLED', actorId?: string) {
     const promise = await this.prisma.paymentPromise.findUnique({ where: { id: promiseId } });
-    if (!promise) throw new NotFoundException('Promise not found');
+    if (!promise) throw new NotFoundException('Promessa não encontrada');
     // Only a still-PENDING promise can be resolved; KEPT/BROKEN/CANCELLED are terminal.
     if (promise.status !== 'PENDING') {
       throw new BadRequestException(`Promise is already ${promise.status.toLowerCase()}`);
@@ -464,9 +464,9 @@ export class CollectionsService {
           where: { id: contractId },
           include: { installments: true },
         });
-        if (!contract) throw new NotFoundException('Contract not found');
+        if (!contract) throw new NotFoundException('Contrato não encontrado');
         if (!['ACTIVE', 'DEFAULTED'].includes(contract.status)) {
-          throw new BadRequestException('Only ACTIVE or DEFAULTED contracts can be renegotiated');
+          throw new BadRequestException('Apenas contratos ativos ou inadimplentes podem ser renegociados');
         }
 
         let outstandingCents = 0;
@@ -501,7 +501,7 @@ export class CollectionsService {
           }
         }
         if (outstandingCents <= 0) {
-          throw new BadRequestException('Contract has no outstanding balance to renegotiate');
+          throw new BadRequestException('O contrato não possui saldo devedor para renegociar');
         }
 
         const rate = dto.interestRate ?? Number(contract.interestRate);
@@ -582,7 +582,7 @@ export class CollectionsService {
 
   private async ensureCase(id: string) {
     const cse = await this.prisma.collectionCase.findUnique({ where: { id } });
-    if (!cse) throw new NotFoundException('Collection case not found');
+    if (!cse) throw new NotFoundException('Caso de cobrança não encontrado');
     return cse;
   }
 }
