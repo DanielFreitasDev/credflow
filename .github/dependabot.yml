@@ -2,6 +2,11 @@
 # grouped to cut noise; majors are also grouped per-app (reviewed deliberately).
 # A few majors are intentionally pinned via `ignore` — they are large, breaking
 # migrations we take on by hand, not via auto-bump.
+#
+# PAUSED: the app is on hold, so every ecosystem is capped at 0 open PRs, which
+# stops version updates without losing the groups/ignores below. To resume,
+# restore the limits noted in the `paused, was:` comments (or drop the line
+# entirely where it says `was: default`).
 version: 2
 updates:
   # ---- Backend (NestJS) ----
@@ -9,7 +14,7 @@ updates:
     directory: /apps/api
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0 # paused, was: 10
     groups:
       api-minor-patch:
         update-types: [minor, patch]
@@ -26,7 +31,7 @@ updates:
     directory: /apps/web
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0 # paused, was: 10
     groups:
       web-minor-patch:
         update-types: [minor, patch]
@@ -38,6 +43,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0 # paused, was: default
     groups:
       actions:
         update-types: [minor, patch, major]
@@ -47,6 +53,7 @@ updates:
     directory: /apps/api
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0 # paused, was: default
     ignore:
       # Pin to Node 24 LTS (matches .nvmrc + package.json engines).
       # (Next even LTS ~Oct 2026 = Node 26 — bump manually then.)
@@ -56,6 +63,7 @@ updates:
     directory: /apps/web
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0 # paused, was: default
     ignore:
       - dependency-name: node
         update-types: [version-update:semver-major]
